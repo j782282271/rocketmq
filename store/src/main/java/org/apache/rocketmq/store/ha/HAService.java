@@ -41,7 +41,6 @@ import org.apache.rocketmq.store.CommitLog;
 import org.apache.rocketmq.store.DefaultMessageStore;
 
 public class HAService {
-    
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
     private final AtomicInteger connectionCount = new AtomicInteger(0);
@@ -86,7 +85,7 @@ public class HAService {
         return result;
     }
 
-    public void notifyTransferSome(final long offset) {
+    public void notifyTransferSome(final long offset) {//一个maseter有多个slave。push2SlaveMaxOffset保存了多个slave中最大的的同步offset，多个slave会修改此值，用自旋cas免锁次改此值
         for (long value = this.push2SlaveMaxOffset.get(); offset > value; ) {
             boolean ok = this.push2SlaveMaxOffset.compareAndSet(value, offset);
             if (ok) {
