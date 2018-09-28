@@ -28,6 +28,7 @@ import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.remoting.common.RemotingUtil;
 import org.apache.rocketmq.store.SelectMappedBufferResult;
 
+//一个slave一个conn，master会存所有slave的conn的list
 public class HAConnection {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     private final HAService haService;
@@ -37,7 +38,7 @@ public class HAConnection {
     private ReadSocketService readSocketService;
 
     private volatile long slaveRequestOffset = -1;
-    private volatile long slaveAckOffset = -1;
+    private volatile long slaveAckOffset = -1;//slave的commitLog最大位置
 
     public HAConnection(final HAService haService, final SocketChannel socketChannel) throws IOException {
         this.haService = haService;
@@ -83,7 +84,7 @@ public class HAConnection {
         private final Selector selector;
         private final SocketChannel socketChannel;
         private final ByteBuffer byteBufferRead = ByteBuffer.allocate(READ_MAX_BUFFER_SIZE);
-        private int processPostion = 0;
+        private int processPostion = 0;//上次读取在byteBufferRead中的位置
         private volatile long lastReadTimestamp = System.currentTimeMillis();
 
         public ReadSocketService(final SocketChannel socketChannel) throws IOException {
@@ -148,7 +149,7 @@ public class HAConnection {
         private boolean processReadEvent() {
             int readSizeZeroTimes = 0;
 
-            if (!this.byteBufferRead.hasRemaining()) {
+            if (!this.byteBufferRead.hasRemaining()) {//buffer没有剩余则重置
                 this.byteBufferRead.flip();
                 this.processPostion = 0;
             }
@@ -159,10 +160,11 @@ public class HAConnection {
                     if (readSize > 0) {
                         readSizeZeroTimes = 0;
                         this.lastReadTimestamp = HAConnection.this.haService.getDefaultMessageStore().getSystemClock().now();
-                        if ((this.byteBufferRead.position() - this.processPostion) >= 8) {
-                            int pos = this.byteBufferRead.position() - (this.byteBufferRead.position() % 8);
-                            long readOffset = this.byteBufferRead.getLong(pos - 8);
-                            this.processPostion = pos;
+                        if ((this.byteBufferRead.position() - this.processPostion) >= 8) {//可读量大于8字节，即salve putLong(commLogOffset)
+                            //|8|8|8|8|8|8|8|8|3|
+                            int pos = this.byteBufferRead.position() - (this.byteBufferRead.position() % 8);//去除不满8字的地方
+                            long readOffset = this.byteBufferRead.getLong(pos - 8);//找到最后一个8字节的位置
+                            this.processPostion = pos;//
 
                             HAConnection.this.slaveAckOffset = readOffset;
                             if (HAConnection.this.slaveRequestOffset < 0) {
@@ -170,7 +172,7 @@ public class HAConnection {
                                 log.info("slave[" + HAConnection.this.clientAddr + "] request offset " + readOffset);
                             }
 
-                            HAConnection.this.haService.notifyTransferSome(HAConnection.this.slaveAckOffset);
+                            HAConnection.this.haService.notifyTransferSome(HAConnection.this.slaveAckOffset);//通知向slave的channel写数据
                         }
                     } else if (readSize == 0) {
                         if (++readSizeZeroTimes >= 3) {
@@ -221,8 +223,8 @@ public class HAConnection {
                         continue;
                     }
 
-                    if (-1 == this.nextTransferFromWhere) {
-                        if (0 == HAConnection.this.slaveRequestOffset) {
+                    if (-1 == this.nextTransferFromWhere) {//第一次传输
+                        if (0 == HAConnection.this.slaveRequestOffset) {//slave没有数据，从0开始
                             long masterOffset = HAConnection.this.haService.getDefaultMessageStore().getCommitLog().getMaxOffset();
                             masterOffset =
                                 masterOffset
@@ -248,7 +250,7 @@ public class HAConnection {
                             HAConnection.this.haService.getDefaultMessageStore().getSystemClock().now() - this.lastWriteTimestamp;
 
                         if (interval > HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig()
-                            .getHaSendHeartbeatInterval()) {
+                            .getHaSendHeartbeatInterval()) {//长时间没有心跳，则发心跳
 
                             // Build Header
                             this.byteBufferHeader.position(0);
@@ -261,15 +263,15 @@ public class HAConnection {
                             if (!this.lastWriteOver)
                                 continue;
                         }
-                    } else {
+                    } else {//没有传输完，继续传输
                         this.lastWriteOver = this.transferData();
                         if (!this.lastWriteOver)
                             continue;
                     }
-
+                    //发送数据
                     SelectMappedBufferResult selectResult =
                         HAConnection.this.haService.getDefaultMessageStore().getCommitLogData(this.nextTransferFromWhere);
-                    if (selectResult != null) {
+                    if (selectResult != null) {//分页发送
                         int size = selectResult.getSize();
                         if (size > HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig().getHaTransferBatchSize()) {
                             size = HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig().getHaTransferBatchSize();
@@ -327,7 +329,7 @@ public class HAConnection {
 
         private boolean transferData() throws Exception {
             int writeSizeZeroTimes = 0;
-            // Write Header
+            // Write Header写头
             while (this.byteBufferHeader.hasRemaining()) {
                 int writeSize = this.socketChannel.write(this.byteBufferHeader);
                 if (writeSize > 0) {
@@ -348,7 +350,7 @@ public class HAConnection {
 
             writeSizeZeroTimes = 0;
 
-            // Write Body
+            // Write Body写body
             if (!this.byteBufferHeader.hasRemaining()) {
                 while (this.selectMappedBufferResult.getByteBuffer().hasRemaining()) {
                     int writeSize = this.socketChannel.write(this.selectMappedBufferResult.getByteBuffer());

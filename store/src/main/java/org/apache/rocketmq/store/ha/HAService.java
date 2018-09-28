@@ -85,7 +85,9 @@ public class HAService {
         return result;
     }
 
-    public void notifyTransferSome(final long offset) {//一个maseter有多个slave。push2SlaveMaxOffset保存了多个slave中最大的的同步offset，多个slave会修改此值，用自旋cas免锁次改此值
+    public void notifyTransferSome(final long offset) {
+        //一个maseter有多个slave。push2SlaveMaxOffset保存了多个slave中最大的的同步offset，多个slave会修改此值，用自旋cas免锁次改此值
+        //只有超过最大同步offset的slave才可以接收同步记录
         for (long value = this.push2SlaveMaxOffset.get(); offset > value; ) {
             boolean ok = this.push2SlaveMaxOffset.compareAndSet(value, offset);
             if (ok) {
@@ -156,6 +158,8 @@ public class HAService {
     /**
      * Listens to slave connections to create {@link HAConnection}.
      */
+    //master开启socket服务,接收salve发来的连接请求，为每个slave创建一个HAConnection
+    // HAConnection中有读写线程，分别新建selector监听各自socketChannel的读写事件
     class AcceptSocketService extends ServiceThread {
         private final SocketAddress socketAddressListen;
         private ServerSocketChannel serverSocketChannel;
@@ -323,6 +327,8 @@ public class HAService {
         }
     }
 
+    //slave通过此client告诉（write）master自己已经得到的最大消息offset
+    //接收master发来的（本线程监听read事件）msg，更新msgStore的commitLog
     class HAClient extends ServiceThread {
         private static final int READ_MAX_BUFFER_SIZE = 1024 * 1024 * 4;
         private final AtomicReference<String> masterAddress = new AtomicReference<>();
@@ -500,7 +506,7 @@ public class HAService {
 
                     SocketAddress socketAddress = RemotingUtil.string2SocketAddress(addr);
                     if (socketAddress != null) {
-                        this.socketChannel = RemotingUtil.connect(socketAddress);
+                        this.socketChannel = RemotingUtil.connect(socketAddress);//阻塞等待连接成功
                         if (this.socketChannel != null) {
                             this.socketChannel.register(this.selector, SelectionKey.OP_READ);
                         }
