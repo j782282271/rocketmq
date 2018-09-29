@@ -281,11 +281,14 @@ public class HAService {
 
         private void doWaitTransfer() {
             synchronized (this.requestsRead) {
-                if (!this.requestsRead.isEmpty()) {
+                if (!this.requestsRead.isEmpty()) {//异步复制requestsRead永远都为空
+                    //实际上同步存储slave并不是同步发到slave上，
+                    //而是等待：后台异步线程同步完，告知同步后的offset（push2SlaveMaxOffset）已经大于当前消息(同步发来的消息req)存储的的位置（req.getNextOffset()）
+                    //已经同步完或者超时，则返回req.wakeupCustomer(transferOK);
                     for (CommitLog.GroupCommitRequest req : this.requestsRead) {
                         boolean transferOK = HAService.this.push2SlaveMaxOffset.get() >= req.getNextOffset();
                         for (int i = 0; !transferOK && i < 5; i++) {
-                            this.notifyTransferObject.waitForRunning(1000);
+                            this.notifyTransferObject.waitForRunning(1000);//HAConnection 175行notifyTransferSome方法，通知读到了slave的maxoffset,此处放行
                             transferOK = HAService.this.push2SlaveMaxOffset.get() >= req.getNextOffset();
                         }
 
@@ -306,6 +309,7 @@ public class HAService {
 
             while (!this.isStopped()) {
                 try {
+                    //同步复制，master存储msg到本地后,调用putRequest，释放此处等待
                     this.waitForRunning(10);
                     this.doWaitTransfer();
                 } catch (Exception e) {

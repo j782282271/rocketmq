@@ -28,7 +28,7 @@ import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.remoting.common.RemotingUtil;
 import org.apache.rocketmq.store.SelectMappedBufferResult;
 
-//一个slave一个conn，master会存所有slave的conn的list
+//一个slave一个conn，master会存所有slave的conn的list，属于master
 public class HAConnection {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     private final HAService haService;
@@ -216,7 +216,7 @@ public class HAConnection {
 
             while (!this.isStopped()) {
                 try {
-                    this.selector.select(1000);
+                    this.selector.select(1000);//缓冲区允许写，只要允许写就可以立即返回，通常立即返回
 
                     if (-1 == HAConnection.this.slaveRequestOffset) {
                         Thread.sleep(10);
