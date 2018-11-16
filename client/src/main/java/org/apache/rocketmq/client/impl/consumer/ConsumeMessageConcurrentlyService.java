@@ -298,6 +298,8 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                     MessageExt msg = consumeRequest.getMsgs().get(i);
                     boolean result = this.sendMessageBack(msg, context);
                     if (!result) {
+                        //处理失败的消费如果发回broker，认为消费成功了。发回broker会存在broker的重试队列中
+                        //之所以这样做是因为防止：offset=2-100都成功，因offset=1消费失败，无法设置offset为99
                         msg.setReconsumeTimes(msg.getReconsumeTimes() + 1);
                         msgBackFailed.add(msg);
                     }
