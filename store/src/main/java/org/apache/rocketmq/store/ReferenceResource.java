@@ -29,7 +29,7 @@ public abstract class ReferenceResource {
             if (this.refCount.getAndIncrement() > 0) {
                 return true;
             } else {
-                this.refCount.getAndDecrement();
+                this.refCount.getAndDecrement();//加1以后发现仍然小于等于零，那么则减去1，相当于获取失败回滚加1操作
             }
         }
 

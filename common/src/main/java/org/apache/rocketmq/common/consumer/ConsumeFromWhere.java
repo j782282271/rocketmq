@@ -17,6 +17,12 @@
 package org.apache.rocketmq.common.consumer;
 
 public enum ConsumeFromWhere {
+    /**
+     * 这个参数只对一个新的consumeGroup第一次启动时有效。
+     就是说，如果是一个consumerGroup重启，他只会从自己上次消费到的offset，继续消费。这个参数是没用的。 而判断是不是一个新的ConsumerGroup是在broker端判断。
+     要知道，消费到哪个offset最先是存在Consumer本地的，定时和broker同步自己的消费offset。broker在判断是不是一个新的consumergroup，就是查broker端有没有这个consumergroup的offset记录。
+     以上所说的第一次启动是指从来没有消费过的消费者，如果该消费者消费过，那么会在broker端记录该消费者的消费位置，如果该消费者挂了再启动，那么自动从上次消费的进度开始，见RemoteBrokerOffsetStore
+     * */
     CONSUME_FROM_LAST_OFFSET,
 
     @Deprecated

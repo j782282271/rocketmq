@@ -48,6 +48,7 @@ public class AllocateMappedFileService extends ServiceThread {
         this.messageStore = messageStore;
     }
 
+    //提前把nextNextFilePath文件缓存也预加载进内存
     public MappedFile putRequestAndReturnMappedFile(String nextFilePath, String nextNextFilePath, int fileSize) {
         int canSubmitRequests = 2;
         if (this.messageStore.getMessageStoreConfig().isTransientStorePoolEnable()) {
@@ -58,6 +59,7 @@ public class AllocateMappedFileService extends ServiceThread {
         }
 
         AllocateRequest nextReq = new AllocateRequest(nextFilePath, fileSize);
+        //原来如果已存在则不在创建，说明上次已经把本次预加载好了，即上次传递的nextNextFilePath即为本次的nextFilePath
         boolean nextPutOK = this.requestTable.putIfAbsent(nextFilePath, nextReq) == null;
 
         if (nextPutOK) {
@@ -130,6 +132,7 @@ public class AllocateMappedFileService extends ServiceThread {
             log.error("Interrupted", e);
         }
 
+        //请求过存在requestTable中，但是没有拿走去使用，需要删除
         for (AllocateRequest req : this.requestTable.values()) {
             if (req.mappedFile != null) {
                 log.info("delete pre allocated maped file, {}", req.mappedFile.getFileName());

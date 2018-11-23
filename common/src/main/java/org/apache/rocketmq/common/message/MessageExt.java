@@ -81,7 +81,7 @@ public class MessageExt extends Message {
         return socketAddress2ByteBuffer(this.bornHost);
     }
 
-    public ByteBuffer getBornHostBytes(ByteBuffer byteBuffer) {
+    public ByteBuffer  getBornHostBytes(ByteBuffer byteBuffer) {
         return socketAddress2ByteBuffer(this.bornHost, byteBuffer);
     }
 

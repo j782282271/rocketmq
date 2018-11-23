@@ -887,6 +887,7 @@ public class CommitLog {
         protected static final int RETRY_TIMES_OVER = 10;
     }
 
+    //异步刷磁盘：commit
     class CommitRealTimeService extends FlushCommitLogService {
 
         private long lastCommitTimestamp = 0;
@@ -914,6 +915,7 @@ public class CommitLog {
                 }
 
                 try {
+                    //FlushRealTimeService与CommitRealTimeService的主要区别：
                     boolean result = CommitLog.this.mappedFileQueue.commit(commitDataLeastPages);
                     long end = System.currentTimeMillis();
                     if (!result) {
@@ -940,6 +942,7 @@ public class CommitLog {
         }
     }
 
+    //异步刷磁盘：flush
     class FlushRealTimeService extends FlushCommitLogService {
         private long lastFlushTimestamp = 0;
         private long printTimes = 0;
@@ -948,9 +951,11 @@ public class CommitLog {
             CommitLog.log.info(this.getServiceName() + " service started");
 
             while (!this.isStopped()) {
+                //flushCommitLogTimed 如果为true,则使用Thread.sleep,如果是false使用waitForRunning
                 boolean flushCommitLogTimed = CommitLog.this.defaultMessageStore.getMessageStoreConfig().isFlushCommitLogTimed();
-
+                //interval :获取刷盘的间隔时间
                 int interval = CommitLog.this.defaultMessageStore.getMessageStoreConfig().getFlushIntervalCommitLog();
+                //flushPhysicQueueLeastPages 每次刷盘最少需要刷新的页
                 int flushPhysicQueueLeastPages = CommitLog.this.defaultMessageStore.getMessageStoreConfig().getFlushCommitLogLeastPages();
 
                 int flushPhysicQueueThoroughInterval =
@@ -960,6 +965,7 @@ public class CommitLog {
 
                 // Print flush progress
                 long currentTimeMillis = System.currentTimeMillis();
+                //flushPhysicQueueThoroughInterval 如果上次刷新的时间+该值 小于当前时间，则改变flushPhysicQueueLeastPages =0
                 if (currentTimeMillis >= (this.lastFlushTimestamp + flushPhysicQueueThoroughInterval)) {
                     this.lastFlushTimestamp = currentTimeMillis;
                     flushPhysicQueueLeastPages = 0;
@@ -978,6 +984,7 @@ public class CommitLog {
                     }
 
                     long begin = System.currentTimeMillis();
+                    //FlushRealTimeService与CommitRealTimeService的主要区别：
                     CommitLog.this.mappedFileQueue.flush(flushPhysicQueueLeastPages);
                     long storeTimestamp = CommitLog.this.mappedFileQueue.getStoreTimestamp();
                     if (storeTimestamp > 0) {
@@ -1021,6 +1028,7 @@ public class CommitLog {
         }
     }
 
+    //同步刷磁盘请求bean
     public static class GroupCommitRequest {
         private final long nextOffset;
         private final CountDownLatch countDownLatch = new CountDownLatch(1);
@@ -1053,6 +1061,7 @@ public class CommitLog {
     /**
      * GroupCommit Service
      */
+    //同步刷磁盘
     class GroupCommitService extends FlushCommitLogService {
         private volatile List<GroupCommitRequest> requestsWrite = new ArrayList<GroupCommitRequest>();
         private volatile List<GroupCommitRequest> requestsRead = new ArrayList<GroupCommitRequest>();
@@ -1376,7 +1385,7 @@ public class CommitLog {
                 //move to add queue offset and commitlog offset
                 messagesByteBuff.position(msgPos + 20);
                 messagesByteBuff.putLong(queueOffset);
-                messagesByteBuff.putLong(wroteOffset + totalMsgLen - msgLen);
+                messagesByteBuff.putLong(wroteOffset + totalMsgLen - msgLen);//最后一条消息的offset，即当前处理消息的offset
 
                 storeHostBytes.rewind();
                 String msgId = MessageDecoder.createMessageId(this.msgIdMemory, storeHostBytes, wroteOffset + totalMsgLen - msgLen);

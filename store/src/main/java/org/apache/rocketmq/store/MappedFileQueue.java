@@ -195,7 +195,7 @@ public class MappedFileQueue {
         long createOffset = -1;
         MappedFile mappedFileLast = getLastMappedFile();
 
-        if (mappedFileLast == null) {
+        if (mappedFileLast == null) {//小于startOffset的最近的mappedFileSize的整数倍的位置
             createOffset = startOffset - (startOffset % this.mappedFileSize);
         }
 
@@ -379,6 +379,7 @@ public class MappedFileQueue {
         return deleteCount;
     }
 
+    //只被deleteExpiredFile调用
     public int deleteExpiredFileByOffset(long offset, int unitSize) {
         Object[] mfs = this.copyMappedFiles(0);
 
@@ -391,11 +392,14 @@ public class MappedFileQueue {
             for (int i = 0; i < mfsLength; i++) {
                 boolean destroy;
                 MappedFile mappedFile = (MappedFile) mfs[i];
+                //获取mappedFile最后一个单元存储的phyOffset,如果比参数的offset小，就删除，认为已过期
                 SelectMappedBufferResult result = mappedFile.selectMappedBuffer(this.mappedFileSize - unitSize);
                 if (result != null) {
                     long maxOffsetInLogicQueue = result.getByteBuffer().getLong();
                     result.release();
                     destroy = maxOffsetInLogicQueue < offset;
+                    //                  maxOffsetInLogicQueue   phyMinOffset
+                    //|--------------------------------------|,此情况删除文件
                     if (destroy) {
                         log.info("physic min offset " + offset + ", logics in current mappedFile max offset "
                             + maxOffsetInLogicQueue + ", delete it");
@@ -408,6 +412,7 @@ public class MappedFileQueue {
                     break;
                 }
 
+                //删除文件
                 if (destroy && mappedFile.destroy(1000 * 60)) {
                     files.add(mappedFile);
                     deleteCount++;
@@ -417,6 +422,7 @@ public class MappedFileQueue {
             }
         }
 
+        //
         deleteExpiredFile(files);
 
         return deleteCount;

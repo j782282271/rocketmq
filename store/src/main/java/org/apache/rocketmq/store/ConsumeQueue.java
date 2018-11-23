@@ -16,13 +16,14 @@
  */
 package org.apache.rocketmq.store;
 
-import java.io.File;
-import java.nio.ByteBuffer;
-import java.util.List;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.store.config.StorePathConfigHelper;
+
+import java.io.File;
+import java.nio.ByteBuffer;
+import java.util.List;
 
 public class ConsumeQueue {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
@@ -35,20 +36,33 @@ public class ConsumeQueue {
     private final MappedFileQueue mappedFileQueue;
     private final String topic;
     private final int queueId;
+    //大小为CQ_STORE_UNIT_SIZE
     private final ByteBuffer byteBufferIndex;
 
     private final String storePath;
     private final int mappedFileSize;
+    //msg 在commitLog中最大的offset
     private long maxPhysicOffset = -1;
+    //minLogicOffset=mappedFile.fileFromOffset+本mappedFile文件偏移量
     private volatile long minLogicOffset = 0;
     private ConsumeQueueExt consumeQueueExt = null;
 
+    /**
+     * ConsumeQueue  MappedFileQueue
+     * topic**queueId1*****000000000    phyOffset（commitLog中的offset）   size（commitLog中msg大小）  tagsCode
+     * *************一个文件大小logicFileSize
+     * *********************000000001
+     * *********************000000002
+     * *******queueId2******000000000
+     * *********************000000001
+     * *********************000000002
+     */
     public ConsumeQueue(
-        final String topic,
-        final int queueId,
-        final String storePath,
-        final int mappedFileSize,
-        final DefaultMessageStore defaultMessageStore) {
+            final String topic,
+            final int queueId,
+            final String storePath,
+            final int mappedFileSize,
+            final DefaultMessageStore defaultMessageStore) {
         this.storePath = storePath;
         this.mappedFileSize = mappedFileSize;
         this.defaultMessageStore = defaultMessageStore;
@@ -57,8 +71,8 @@ public class ConsumeQueue {
         this.queueId = queueId;
 
         String queueDir = this.storePath
-            + File.separator + topic
-            + File.separator + queueId;
+                + File.separator + topic
+                + File.separator + queueId;
 
         this.mappedFileQueue = new MappedFileQueue(queueDir, mappedFileSize, null);
 
@@ -66,11 +80,11 @@ public class ConsumeQueue {
 
         if (defaultMessageStore.getMessageStoreConfig().isEnableConsumeQueueExt()) {
             this.consumeQueueExt = new ConsumeQueueExt(
-                topic,
-                queueId,
-                StorePathConfigHelper.getStorePathConsumeQueueExt(defaultMessageStore.getMessageStoreConfig().getStorePathRootDir()),
-                defaultMessageStore.getMessageStoreConfig().getMappedFileSizeConsumeQueueExt(),
-                defaultMessageStore.getMessageStoreConfig().getBitMapLengthConsumeQueueExt()
+                    topic,
+                    queueId,
+                    StorePathConfigHelper.getStorePathConsumeQueueExt(defaultMessageStore.getMessageStoreConfig().getStorePathRootDir()),
+                    defaultMessageStore.getMessageStoreConfig().getMappedFileSizeConsumeQueueExt(),
+                    defaultMessageStore.getMessageStoreConfig().getBitMapLengthConsumeQueueExt()
             );
         }
     }
@@ -112,7 +126,7 @@ public class ConsumeQueue {
                         }
                     } else {
                         log.info("recover current consume queue file over,  " + mappedFile.getFileName() + " "
-                            + offset + " " + size + " " + tagsCode);
+                                + offset + " " + size + " " + tagsCode);
                         break;
                     }
                 }
@@ -122,7 +136,7 @@ public class ConsumeQueue {
                     if (index >= mappedFiles.size()) {
 
                         log.info("recover last consume queue file over, last mapped file "
-                            + mappedFile.getFileName());
+                                + mappedFile.getFileName());
                         break;
                     } else {
                         mappedFile = mappedFiles.get(index);
@@ -133,11 +147,12 @@ public class ConsumeQueue {
                     }
                 } else {
                     log.info("recover current consume queue queue over " + mappedFile.getFileName() + " "
-                        + (processOffset + mappedFileOffset));
+                            + (processOffset + mappedFileOffset));
                     break;
                 }
             }
 
+            //processOffset文件名中的offset，即fileFromOffset；加上，本文件中的offset：mappedFileOffset
             processOffset += mappedFileOffset;
             this.mappedFileQueue.setFlushedWhere(processOffset);
             this.mappedFileQueue.setCommittedWhere(processOffset);
@@ -151,10 +166,16 @@ public class ConsumeQueue {
         }
     }
 
+    //返回总的mappedFile的offset，除以单元数
     public long getOffsetInQueueByTime(final long timestamp) {
         MappedFile mappedFile = this.mappedFileQueue.getMappedFileByTime(timestamp);
         if (mappedFile != null) {
             long offset = 0;
+            //minLogicOffset是在consumequeue下的mappedFile文件的偏移量，mappedFile文件大小5.72*1024K，该值就是mappedFile中的偏移量加上FileFromOffset
+            //小于minLogicOffset值的logicOffset，在comitLog中的值比过去72小时还早，对应commitLog的消息已经被清空见deleteExpiredFile中的correctMinLogicOffset
+            //minLogicOffset > mappedFile.getFileFromOffset() 说明minLogicOffset落在当前mappedFile文件中，需要减去FileFromOffset，作为本文件中的offset
+            //minLogicOffset <= mappedFile.getFileFromOffset() 说明，minLogicOffset没有落在当前mappedFile文件中，查找需要从当前文件的0处开始
+            //low:本文件(mappedOffset)最小offset
             int low = minLogicOffset > mappedFile.getFileFromOffset() ? (int) (minLogicOffset - mappedFile.getFileFromOffset()) : 0;
             int high = 0;
             int midOffset = -1, targetOffset = -1, leftOffset = -1, rightOffset = -1;
@@ -163,21 +184,22 @@ public class ConsumeQueue {
             SelectMappedBufferResult sbr = mappedFile.selectMappedBuffer(0);
             if (null != sbr) {
                 ByteBuffer byteBuffer = sbr.getByteBuffer();
-                high = byteBuffer.limit() - CQ_STORE_UNIT_SIZE;
+                high = byteBuffer.limit() - CQ_STORE_UNIT_SIZE;//本文件(mappedOffset)最大offset
                 try {
                     while (high >= low) {
                         midOffset = (low + high) / (2 * CQ_STORE_UNIT_SIZE) * CQ_STORE_UNIT_SIZE;
                         byteBuffer.position(midOffset);
                         long phyOffset = byteBuffer.getLong();
                         int size = byteBuffer.getInt();
-                        if (phyOffset < minPhysicOffset) {
+                        if (phyOffset < minPhysicOffset) {//快速过滤通道
                             low = midOffset + CQ_STORE_UNIT_SIZE;
                             leftOffset = midOffset;
                             continue;
                         }
 
+                        //midOffset位置指向的msg的存储时间
                         long storeTime =
-                            this.defaultMessageStore.getCommitLog().pickupStoreTimestamp(phyOffset, size);
+                                this.defaultMessageStore.getCommitLog().pickupStoreTimestamp(phyOffset, size);
                         if (storeTime < 0) {
                             return 0;
                         } else if (storeTime == timestamp) {
@@ -185,32 +207,34 @@ public class ConsumeQueue {
                             break;
                         } else if (storeTime > timestamp) {
                             high = midOffset - CQ_STORE_UNIT_SIZE;
+                            //找到targetOffset后，需要确定targetOffset的上下范围，rightOffset上范围，leftOffset下范围
                             rightOffset = midOffset;
+                            //rightIndexValue上范围的时间，leftIndexValue下范围的时间
                             rightIndexValue = storeTime;
                         } else {
                             low = midOffset + CQ_STORE_UNIT_SIZE;
                             leftOffset = midOffset;
                             leftIndexValue = storeTime;
                         }
-                    }
+                    }//寻找结束
 
                     if (targetOffset != -1) {
-
+                        //找到了
                         offset = targetOffset;
-                    } else {
+                    } else {//没找到
                         if (leftIndexValue == -1) {
 
                             offset = rightOffset;
                         } else if (rightIndexValue == -1) {
 
                             offset = leftOffset;
-                        } else {
+                        } else {//没找到后，根据上下范围选择一个作为其offset，不太准
                             offset =
-                                Math.abs(timestamp - leftIndexValue) > Math.abs(timestamp
-                                    - rightIndexValue) ? rightOffset : leftOffset;
+                                    Math.abs(timestamp - leftIndexValue) > Math.abs(timestamp
+                                            - rightIndexValue) ? rightOffset : leftOffset;
                         }
                     }
-
+                    //返回所有总本文件中offset再除以一个unit，相当于总文件的，第几个unit
                     return (mappedFile.getFileFromOffset() + offset) / CQ_STORE_UNIT_SIZE;
                 } finally {
                     sbr.release();
@@ -220,6 +244,10 @@ public class ConsumeQueue {
         return 0;
     }
 
+    //phyOffset是commitLog中的msg offset，在consumequeue中是每个单位中的第一个long值
+    //如果LastMappedFile中最小的phyOffset比phyOffet大则删除LastMappedFile文件
+    //遍历的同时记录maxPhysicOffset
+    //commitLog recoverAbnormally会调用此方法，把commitLog中恢复出来的maxPhyOffset传进来
     public void truncateDirtyLogicFiles(long phyOffet) {
 
         int logicFileSize = this.mappedFileSize;
@@ -236,15 +264,21 @@ public class ConsumeQueue {
                 mappedFile.setFlushedPosition(0);
 
                 for (int i = 0; i < logicFileSize; i += CQ_STORE_UNIT_SIZE) {
-                    long offset = byteBuffer.getLong();
+                    long offset = byteBuffer.getLong();//此phyoffset在consumequeue中一定是增大的
                     int size = byteBuffer.getInt();
                     long tagsCode = byteBuffer.getLong();
 
                     if (0 == i) {
+                        // phyOffset  offset
+                        //           |----------------------------------|
+                        //此情况删除该LastMappedFile，LastMappedFile中最小的offset都比参数phyOffet大，则删除LastMappedFile文件
                         if (offset >= phyOffet) {
                             this.mappedFileQueue.deleteLastMappedFile();
                             break;
                         } else {
+                            //            offset  phyOffset    offsetN
+                            //           |----------------------------------|
+                            //此情况继遍历，以存储maxPhysicOffset的值
                             int pos = i + CQ_STORE_UNIT_SIZE;
                             mappedFile.setWrotePosition(pos);
                             mappedFile.setCommittedPosition(pos);
@@ -290,6 +324,7 @@ public class ConsumeQueue {
         }
     }
 
+    //找到LastMappedFile最后写位置(前一个)中写的phyOffset,返回的是phyOffset
     public long getLastOffset() {
         long lastOffset = -1;
 
@@ -329,12 +364,16 @@ public class ConsumeQueue {
         return result;
     }
 
+    //定时任务定时清理过期文件，和commitLog的72小时一起在定时任务中清理
+    //从commitLog中获取minOffset传进来，这样保证了与72内存在的commitLog文件一致
     public int deleteExpiredFile(long offset) {
         int cnt = this.mappedFileQueue.deleteExpiredFileByOffset(offset, CQ_STORE_UNIT_SIZE);
         this.correctMinOffset(offset);
         return cnt;
     }
 
+    //找到mappedFileQueue中最小的phyOffset且比参数phyMinOffset大，
+    //将phyOffset所属文件的fileFromOffset加phyOffset所在位置偏移量 赋值给this.minLogicOffset
     public void correctMinOffset(long phyMinOffset) {
         MappedFile mappedFile = this.mappedFileQueue.getFirstMappedFile();
         long minExtAddr = 1;
@@ -346,11 +385,14 @@ public class ConsumeQueue {
                         long offsetPy = result.getByteBuffer().getLong();
                         result.getByteBuffer().getInt();
                         long tagsCode = result.getByteBuffer().getLong();
-
+                        //phyMinOffset
+                        //                   offsetPy
+                        //     |--------------------------------|
                         if (offsetPy >= phyMinOffset) {
+                            //minLogicOffset=fileFromOffset+本文件的偏移量
                             this.minLogicOffset = result.getMappedFile().getFileFromOffset() + i;
                             log.info("Compute logical min offset: {}, topic: {}, queueId: {}",
-                                this.getMinOffsetInQueue(), this.topic, this.queueId);
+                                    this.getMinOffsetInQueue(), this.topic, this.queueId);
                             // This maybe not take effect, when not every consume queue has extend file.
                             if (isExtAddr(tagsCode)) {
                                 minExtAddr = tagsCode;
@@ -391,18 +433,18 @@ public class ConsumeQueue {
                     tagsCode = extAddr;
                 } else {
                     log.warn("Save consume queue extend fail, So just save tagsCode! {}, topic:{}, queueId:{}, offset:{}", cqExtUnit,
-                        topic, queueId, request.getCommitLogOffset());
+                            topic, queueId, request.getCommitLogOffset());
                 }
             }
             boolean result = this.putMessagePositionInfo(request.getCommitLogOffset(),
-                request.getMsgSize(), tagsCode, request.getConsumeQueueOffset());
+                    request.getMsgSize(), tagsCode, request.getConsumeQueueOffset());
             if (result) {
                 this.defaultMessageStore.getStoreCheckpoint().setLogicsMsgTimestamp(request.getStoreTimestamp());
                 return;
             } else {
                 // XXX: warn and notify me
                 log.warn("[BUG]put commit log position info to " + topic + ":" + queueId + " " + request.getCommitLogOffset()
-                    + " failed, retry " + i + " times");
+                        + " failed, retry " + i + " times");
 
                 try {
                     Thread.sleep(1000);
@@ -418,7 +460,7 @@ public class ConsumeQueue {
     }
 
     private boolean putMessagePositionInfo(final long offset, final int size, final long tagsCode,
-        final long cqOffset) {
+                                           final long cqOffset) {
 
         if (offset <= this.maxPhysicOffset) {
             return true;
@@ -441,7 +483,7 @@ public class ConsumeQueue {
                 this.mappedFileQueue.setCommittedWhere(expectLogicOffset);
                 this.fillPreBlank(mappedFile, expectLogicOffset);
                 log.info("fill pre blank space " + mappedFile.getFileName() + " " + expectLogicOffset + " "
-                    + mappedFile.getWrotePosition());
+                        + mappedFile.getWrotePosition());
             }
 
             if (cqOffset != 0) {
@@ -449,18 +491,18 @@ public class ConsumeQueue {
 
                 if (expectLogicOffset < currentLogicOffset) {
                     log.warn("Build  consume queue repeatedly, expectLogicOffset: {} currentLogicOffset: {} Topic: {} QID: {} Diff: {}",
-                        expectLogicOffset, currentLogicOffset, this.topic, this.queueId, expectLogicOffset - currentLogicOffset);
+                            expectLogicOffset, currentLogicOffset, this.topic, this.queueId, expectLogicOffset - currentLogicOffset);
                     return true;
                 }
 
                 if (expectLogicOffset != currentLogicOffset) {
                     LOG_ERROR.warn(
-                        "[BUG]logic queue order maybe wrong, expectLogicOffset: {} currentLogicOffset: {} Topic: {} QID: {} Diff: {}",
-                        expectLogicOffset,
-                        currentLogicOffset,
-                        this.topic,
-                        this.queueId,
-                        expectLogicOffset - currentLogicOffset
+                            "[BUG]logic queue order maybe wrong, expectLogicOffset: {} currentLogicOffset: {} Topic: {} QID: {} Diff: {}",
+                            expectLogicOffset,
+                            currentLogicOffset,
+                            this.topic,
+                            this.queueId,
+                            expectLogicOffset - currentLogicOffset
                     );
                 }
             }
@@ -569,7 +611,7 @@ public class ConsumeQueue {
 
     protected boolean isExtWriteEnable() {
         return this.consumeQueueExt != null
-            && this.defaultMessageStore.getMessageStoreConfig().isEnableConsumeQueueExt();
+                && this.defaultMessageStore.getMessageStoreConfig().isEnableConsumeQueueExt();
     }
 
     /**

@@ -243,6 +243,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         }
 
         if (!this.consumeOrderly) {
+            //msgTreeMap.lastKey() - this.msgTreeMap.firstKey();过大说明offset差距过大，但，cachedMessageCount又不大，说明，其中一些offset不在其中，在其他节点的消费者上
             if (processQueue.getMaxSpan() > this.defaultMQPushConsumer.getConsumeConcurrentlyMaxSpan()) {
                 this.executePullRequestLater(pullRequest, PULL_TIME_DELAY_MILLS_WHEN_FLOW_CONTROL);
                 if ((queueMaxSpanFlowControlTimes++ % 1000) == 0) {

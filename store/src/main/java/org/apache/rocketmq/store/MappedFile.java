@@ -270,6 +270,7 @@ public class MappedFile extends ReferenceResource {
     /**
      * @return The current flushed position
      */
+    //channel-->磁盘
     public int flush(final int flushLeastPages) {
         if (this.isAbleToFlush(flushLeastPages)) {
             if (this.hold()) {
@@ -296,6 +297,8 @@ public class MappedFile extends ReferenceResource {
         return this.getFlushedPosition();
     }
 
+    //writeBuffer不为null才有效，将writeBuffer中的数据存入channel，而flush是将channel中的数据刷到磁盘上
+    //writeBuffer-->channel
     public int commit(final int commitLeastPages) {
         if (writeBuffer == null) {
             //no need to commit data to file channel, so just regard wrotePosition as committedPosition.
@@ -325,7 +328,7 @@ public class MappedFile extends ReferenceResource {
 
         if (writePos - this.committedPosition.get() > 0) {
             try {
-                ByteBuffer byteBuffer = writeBuffer.slice();
+                ByteBuffer byteBuffer = writeBuffer.slice();//会slice出上次commit之前的所有数据，而本次需要commit的只是lastCommittedPosition与writePos之间的数据
                 byteBuffer.position(lastCommittedPosition);
                 byteBuffer.limit(writePos);
                 this.fileChannel.position(lastCommittedPosition);
@@ -404,7 +407,8 @@ public class MappedFile extends ReferenceResource {
     public SelectMappedBufferResult selectMappedBuffer(int pos) {
         int readPosition = getReadPosition();
         if (pos < readPosition && pos >= 0) {
-            if (this.hold()) {
+            if (this.hold()) {//引用计数加1，如果从SelectMappedBufferResult中取出bytebuffer，使用后，需要release掉引用计数
+                              //在flush、commit、selectRes方法中会执行hold加1操作
                 ByteBuffer byteBuffer = this.mappedByteBuffer.slice();
                 byteBuffer.position(pos);
                 int size = readPosition - pos;
@@ -438,6 +442,7 @@ public class MappedFile extends ReferenceResource {
         return true;
     }
 
+    //删除文件
     public boolean destroy(final long intervalForcibly) {
         this.shutdown(intervalForcibly);
 
