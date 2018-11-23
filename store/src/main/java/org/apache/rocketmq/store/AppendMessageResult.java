@@ -23,6 +23,7 @@ public class AppendMessageResult {
     // Return code
     private AppendMessageStatus status;
     // Where to start writing
+//    wroteOffset=fileFromOffset + byteBuffer.position();
     private long wroteOffset;
     // Write Bytes
     private int wroteBytes;
@@ -31,6 +32,7 @@ public class AppendMessageResult {
     // Message storage timestamp
     private long storeTimestamp;
     // Consume queue's offset(step by one)
+    //在锁中递增
     private long logicsOffset;
     private long pagecacheRT = 0;
 

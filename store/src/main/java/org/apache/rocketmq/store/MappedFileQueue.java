@@ -437,7 +437,7 @@ public class MappedFileQueue {
             long where = mappedFile.getFileFromOffset() + offset;
             result = where == this.flushedWhere;
             this.flushedWhere = where;
-            if (0 == flushLeastPages) {
+            if (0 == flushLeastPages) {//刷新成功的最后时间
                 this.storeTimestamp = tmpTimeStamp;
             }
         }
@@ -445,13 +445,15 @@ public class MappedFileQueue {
         return result;
     }
 
+    //返回true没有数据被commit
+    //返回false有数据被commit
     public boolean commit(final int commitLeastPages) {
         boolean result = true;
         MappedFile mappedFile = this.findMappedFileByOffset(this.committedWhere, this.committedWhere == 0);
         if (mappedFile != null) {
             int offset = mappedFile.commit(commitLeastPages);
             long where = mappedFile.getFileFromOffset() + offset;
-            result = where == this.committedWhere;
+            result = where == this.committedWhere;//相等意味着没有数据被commit
             this.committedWhere = where;
         }
 

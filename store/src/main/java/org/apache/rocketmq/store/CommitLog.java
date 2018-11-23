@@ -50,10 +50,10 @@ public class CommitLog {
     private final static int BLANK_MAGIC_CODE = -875286124;
     private final MappedFileQueue mappedFileQueue;
     private final DefaultMessageStore defaultMessageStore;
-    private final FlushCommitLogService flushCommitLogService;
+    private final FlushCommitLogService flushCommitLogService;//实时or异步channel-->磁盘
 
     //If TransientStorePool enabled, we must flush message to FileChannel at fixed periods
-    private final FlushCommitLogService commitLogService;
+    private final FlushCommitLogService commitLogService;//bytebuffer-->channel
 
     private final AppendMessageCallback appendMessageCallback;
     private final ThreadLocal<MessageExtBatchEncoder> batchEncoderThreadLocal;
@@ -631,25 +631,28 @@ public class CommitLog {
     public void handleDiskFlush(AppendMessageResult result, PutMessageResult putMessageResult, MessageExt messageExt) {
         // Synchronization flush
         if (FlushDiskType.SYNC_FLUSH == this.defaultMessageStore.getMessageStoreConfig().getFlushDiskType()) {
+            //flushCommitLogService异步是FlushRealTimeService
+            //flushCommitLogService同步是GroupCommitService
+            //疑问：SYNC_FLUSH为什么不需要判断isTransientStorePoolEnable==true的时候进行commit wakeup呢？
             final GroupCommitService service = (GroupCommitService) this.flushCommitLogService;
-            if (messageExt.isWaitStoreMsgOK()) {
+            if (messageExt.isWaitStoreMsgOK()) {//producer同步等待刷完磁盘
                 GroupCommitRequest request = new GroupCommitRequest(result.getWroteOffset() + result.getWroteBytes());
-                service.putRequest(request);
+                service.putRequest(request);//放入请求并告知GroupCommitService，已经来数据了，可以wakeup去执行flush了
                 boolean flushOK = request.waitForFlush(this.defaultMessageStore.getMessageStoreConfig().getSyncFlushTimeout());
-                if (!flushOK) {
+                if (!flushOK) {//磁盘刷失败告知producer失败
                     log.error("do groupcommit, wait for flush failed, topic: " + messageExt.getTopic() + " tags: " + messageExt.getTags()
                         + " client address: " + messageExt.getBornHostString());
                     putMessageResult.setPutMessageStatus(PutMessageStatus.FLUSH_DISK_TIMEOUT);
                 }
-            } else {
-                service.wakeup();
+            } else {//producer不同步等待刷完磁盘
+                service.wakeup();//告知GroupCommitService，已经来数据了，可以wakeup去执行flush了
             }
         }
         // Asynchronous flush
         else {
             if (!this.defaultMessageStore.getMessageStoreConfig().isTransientStorePoolEnable()) {
-                flushCommitLogService.wakeup();
-            } else {
+                flushCommitLogService.wakeup();//没有经过byterbuffer与channel的交互，直接channel-->磁盘
+            } else {//bytebuffer-->channel
                 commitLogService.wakeup();
             }
         }
@@ -887,7 +890,12 @@ public class CommitLog {
         protected static final int RETRY_TIMES_OVER = 10;
     }
 
-    //异步刷磁盘：commit
+    //CommitRealTimeService,定时执行(或者异步刷新来数据了会wakeup执行)bufferBuffer-->channel，只有isTransientStorePoolEnable==true时才会开启，与MappedFile中的writeBuffer有关
+    //FlushRealTimeService,定时(或者同步/异步刷新来数据了会wakeup执行)channel-->磁盘，
+    //GroupCommitService,同步刷新磁盘，并告知producer，磁盘已刷完
+
+    //commit 从bufferBuffer到channel，commit后通知flush
+    //isTransientStorePoolEnable==true时才会开启
     class CommitRealTimeService extends FlushCommitLogService {
 
         private long lastCommitTimestamp = 0;
@@ -916,12 +924,13 @@ public class CommitLog {
 
                 try {
                     //FlushRealTimeService与CommitRealTimeService的主要区别：
+                    //commit 从bufferBuffer到channel
                     boolean result = CommitLog.this.mappedFileQueue.commit(commitDataLeastPages);
                     long end = System.currentTimeMillis();
-                    if (!result) {
+                    if (!result) {//false意味着commit一些数据
                         this.lastCommitTimestamp = end; // result = false means some data committed.
                         //now wake up flush thread.
-                        flushCommitLogService.wakeup();
+                        flushCommitLogService.wakeup();//通知从channel flush到磁盘
                     }
 
                     if (end - begin > 500) {
@@ -942,7 +951,8 @@ public class CommitLog {
         }
     }
 
-    //异步刷磁盘：flush
+    //异步模式flush,从channel flush到磁盘
+    //与GroupCommitService类没有任何交叉，使用了GroupCommitService就不使用FlushRealTimeService
     class FlushRealTimeService extends FlushCommitLogService {
         private long lastFlushTimestamp = 0;
         private long printTimes = 0;
@@ -957,7 +967,7 @@ public class CommitLog {
                 int interval = CommitLog.this.defaultMessageStore.getMessageStoreConfig().getFlushIntervalCommitLog();
                 //flushPhysicQueueLeastPages 每次刷盘最少需要刷新的页
                 int flushPhysicQueueLeastPages = CommitLog.this.defaultMessageStore.getMessageStoreConfig().getFlushCommitLogLeastPages();
-
+                //flushPhysicQueueThoroughInterval 彻底flush时间间隔
                 int flushPhysicQueueThoroughInterval =
                     CommitLog.this.defaultMessageStore.getMessageStoreConfig().getFlushCommitLogThoroughInterval();
 
@@ -965,7 +975,9 @@ public class CommitLog {
 
                 // Print flush progress
                 long currentTimeMillis = System.currentTimeMillis();
-                //flushPhysicQueueThoroughInterval 如果上次刷新的时间+该值 小于当前时间，则改变flushPhysicQueueLeastPages =0
+                //flushPhysicQueueThoroughInterval 彻底flush一次的时间，如果到达该时间间隔
+                //则改变flushPhysicQueueLeastPages =0，意味着彻底flush一次，即使残留很少也要flush
+                //如果没到达这个时间间隔则存在大于flushPhysicQueueLeastPages页面的数据才会flush
                 if (currentTimeMillis >= (this.lastFlushTimestamp + flushPhysicQueueThoroughInterval)) {
                     this.lastFlushTimestamp = currentTimeMillis;
                     flushPhysicQueueLeastPages = 0;
@@ -988,6 +1000,7 @@ public class CommitLog {
                     CommitLog.this.mappedFileQueue.flush(flushPhysicQueueLeastPages);
                     long storeTimestamp = CommitLog.this.mappedFileQueue.getStoreTimestamp();
                     if (storeTimestamp > 0) {
+                        //记录CommitLog最后flush磁盘的时间，用于abort恢复
                         CommitLog.this.defaultMessageStore.getStoreCheckpoint().setPhysicMsgTimestamp(storeTimestamp);
                     }
                     long past = System.currentTimeMillis() - begin;
@@ -1003,6 +1016,7 @@ public class CommitLog {
             // Normal shutdown, to ensure that all the flush before exit
             boolean result = false;
             for (int i = 0; i < RETRY_TIMES_OVER && !result; i++) {
+                //退出前强制刷新所有残留
                 result = CommitLog.this.mappedFileQueue.flush(0);
                 CommitLog.log.info(this.getServiceName() + " service shutdown, retry " + (i + 1) + " times " + (result ? "OK" : "Not OK"));
             }
@@ -1028,7 +1042,7 @@ public class CommitLog {
         }
     }
 
-    //同步刷磁盘请求bean
+    //同步模式，刷磁盘请求bean
     public static class GroupCommitRequest {
         private final long nextOffset;
         private final CountDownLatch countDownLatch = new CountDownLatch(1);
@@ -1091,7 +1105,7 @@ public class CommitLog {
                         for (int i = 0; i < 2 && !flushOK; i++) {
                             flushOK = CommitLog.this.mappedFileQueue.getFlushedWhere() >= req.getNextOffset();
 
-                            if (!flushOK) {
+                            if (!flushOK) {//强制flush
                                 CommitLog.this.mappedFileQueue.flush(0);
                             }
                         }
@@ -1311,6 +1325,7 @@ public class CommitLog {
             // Write messages to the queue buffer
             byteBuffer.put(this.msgStoreItemMemory.array(), 0, msgLen);
 
+            //wroteOffset=fileFromOffset + byteBuffer.position();
             AppendMessageResult result = new AppendMessageResult(AppendMessageStatus.PUT_OK, wroteOffset, msgLen, msgId,
                 msgInner.getStoreTimestamp(), queueOffset, CommitLog.this.defaultMessageStore.now() - beginTimeMills);
 
@@ -1321,6 +1336,7 @@ public class CommitLog {
                 case MessageSysFlag.TRANSACTION_NOT_TYPE:
                 case MessageSysFlag.TRANSACTION_COMMIT_TYPE:
                     // The next update ConsumeQueue information
+                    //queueOffset是递增的，在lock中递增
                     CommitLog.this.topicQueueTable.put(key, ++queueOffset);
                     break;
                 default:
@@ -1350,7 +1366,7 @@ public class CommitLog {
             int msgNum = 0;
             msgIdBuilder.setLength(0);
             final long beginTimeMills = CommitLog.this.defaultMessageStore.now();
-            ByteBuffer messagesByteBuff = messageExtBatch.getEncodedBuff();
+            ByteBuffer messagesByteBuff = messageExtBatch.getEncodedBuff();//已经有数据了，在putmessage中已经编码了
             this.resetByteBuffer(hostHolder, 8);
             ByteBuffer storeHostBytes = messageExtBatch.getStoreHostBytes(hostHolder);
             messagesByteBuff.mark();
@@ -1484,9 +1500,9 @@ public class CommitLog {
                 // 5 FLAG
                 this.msgBatchMemory.putInt(flag);
                 // 6 QUEUEOFFSET
-                this.msgBatchMemory.putLong(0);
+                this.msgBatchMemory.putLong(0);//空出来，在doAppend中填写这个字段
                 // 7 PHYSICALOFFSET
-                this.msgBatchMemory.putLong(0);
+                this.msgBatchMemory.putLong(0);//空出来，在doAppend中填写这个字段
                 // 8 SYSFLAG
                 this.msgBatchMemory.putInt(messageExtBatch.getSysFlag());
                 // 9 BORNTIMESTAMP

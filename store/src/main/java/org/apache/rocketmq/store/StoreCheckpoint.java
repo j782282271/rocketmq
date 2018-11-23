@@ -87,6 +87,7 @@ public class StoreCheckpoint {
     }
 
     public void setPhysicMsgTimestamp(long physicMsgTimestamp) {
+        //记录CommitLog最后flush磁盘的时间，用于abort恢复
         this.physicMsgTimestamp = physicMsgTimestamp;
     }
 

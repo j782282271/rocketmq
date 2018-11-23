@@ -57,12 +57,12 @@ public class MappedFile extends ReferenceResource {
     /**
      * Message will put to here first, and then reput to FileChannel if writeBuffer is not null.
      */
-    protected ByteBuffer writeBuffer = null;
+    protected ByteBuffer writeBuffer = null;//与mappedByteBuffer只使用一个
     protected TransientStorePool transientStorePool = null;
     private String fileName;
     private long fileFromOffset;
     private File file;
-    private MappedByteBuffer mappedByteBuffer;
+    private MappedByteBuffer mappedByteBuffer;//与writeBuffer只使用一个
     private volatile long storeTimestamp = 0;
     private boolean firstCreateInQueue = false;
 
