@@ -41,7 +41,7 @@ public class IndexHeader {
         this.byteBuffer = byteBuffer;
     }
 
-    public void load() {
+    public void load() {//byteBuffer-->内存
         this.beginTimestamp.set(byteBuffer.getLong(beginTimestampIndex));
         this.endTimestamp.set(byteBuffer.getLong(endTimestampIndex));
         this.beginPhyOffset.set(byteBuffer.getLong(beginPhyoffsetIndex));
@@ -55,7 +55,7 @@ public class IndexHeader {
         }
     }
 
-    public void updateByteBuffer() {
+    public void updateByteBuffer() {//内存-->byteBuffer
         this.byteBuffer.putLong(beginTimestampIndex, this.beginTimestamp.get());
         this.byteBuffer.putLong(endTimestampIndex, this.endTimestamp.get());
         this.byteBuffer.putLong(beginPhyoffsetIndex, this.beginPhyOffset.get());

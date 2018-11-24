@@ -123,7 +123,7 @@ public class DefaultMessageStore implements MessageStore {
         this.consumeQueueTable = new ConcurrentHashMap<>(32);
 
         this.flushConsumeQueueService = new FlushConsumeQueueService();
-        this.cleanCommitLogService = new CleanCommitLogService();
+        this.cleanCommitLogService = new CleanCommitLogService();//72h清除
         this.cleanConsumeQueueService = new CleanConsumeQueueService();
         this.storeStatsService = new StoreStatsService();
         this.indexService = new IndexService(this);
@@ -152,6 +152,7 @@ public class DefaultMessageStore implements MessageStore {
         lockFile = new RandomAccessFile(file, "rw");
     }
 
+    //commitLog recoverAbnormally会调用此方法，把commitLog中恢复出来的maxPhyOffset传进来
     public void truncateDirtyLogicFiles(long phyOffset) {
         ConcurrentMap<String, ConcurrentMap<Integer, ConsumeQueue>> tables = DefaultMessageStore.this.consumeQueueTable;
 

@@ -552,6 +552,7 @@ public class MappedFile extends ReferenceResource {
         this.firstCreateInQueue = firstCreateInQueue;
     }
 
+    //https://www.jianshu.com/p/64293741538d
     public void mlock() {
         final long beginTime = System.currentTimeMillis();
         final long address = ((DirectBuffer) (this.mappedByteBuffer)).address();
@@ -562,6 +563,8 @@ public class MappedFile extends ReferenceResource {
         }
 
         {
+            //madvise：https://blog.csdn.net/wenjieky/article/details/8865272
+            //https://blog.csdn.net/chdhust/article/details/8846718
             int ret = LibC.INSTANCE.madvise(pointer, new NativeLong(this.fileSize), LibC.MADV_WILLNEED);
             log.info("madvise {} {} {} ret = {} time consuming = {}", address, this.fileName, this.fileSize, ret, System.currentTimeMillis() - beginTime);
         }

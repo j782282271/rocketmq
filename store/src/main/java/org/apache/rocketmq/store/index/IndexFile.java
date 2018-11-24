@@ -32,6 +32,7 @@ public class IndexFile {
     private static int hashSlotSize = 4;
     private static int indexSize = 20;
     private static int invalidIndex = 0;
+//    keyHash % this.hashSlotNum;
     private final int hashSlotNum;
     private final int indexNum;
     private final MappedFile mappedFile;
@@ -39,6 +40,8 @@ public class IndexFile {
     private final MappedByteBuffer mappedByteBuffer;
     private final IndexHeader indexHeader;
 
+    //hashSlotNum=5000000;
+    //indexNum=5000000 * 4;
     public IndexFile(final String fileName, final int hashSlotNum, final int indexNum,
         final long endPhyOffset, final long endTimestamp) throws IOException {
         int fileTotalSize =
@@ -46,6 +49,7 @@ public class IndexFile {
         this.mappedFile = new MappedFile(fileName, fileTotalSize);
         this.fileChannel = this.mappedFile.getFileChannel();
         this.mappedByteBuffer = this.mappedFile.getMappedByteBuffer();
+//        keyHash % this.hashSlotNum;
         this.hashSlotNum = hashSlotNum;
         this.indexNum = indexNum;
 
@@ -82,6 +86,7 @@ public class IndexFile {
     }
 
     public boolean isWriteFull() {
+        //indexNum固定值5000000 * 4;
         return this.indexHeader.getIndexCount() >= this.indexNum;
     }
 
@@ -90,7 +95,7 @@ public class IndexFile {
     }
 
     public boolean putKey(final String key, final long phyOffset, final long storeTimestamp) {
-        if (this.indexHeader.getIndexCount() < this.indexNum) {
+        if (this.indexHeader.getIndexCount() < this.indexNum) {//indexNum固定值5000000 * 4;
             int keyHash = indexKeyHashMethod(key);
             int slotPos = keyHash % this.hashSlotNum;
             int absSlotPos = IndexHeader.INDEX_HEADER_SIZE + slotPos * hashSlotSize;
@@ -125,7 +130,7 @@ public class IndexFile {
                 this.mappedByteBuffer.putInt(absIndexPos, keyHash);
                 this.mappedByteBuffer.putLong(absIndexPos + 4, phyOffset);
                 this.mappedByteBuffer.putInt(absIndexPos + 4 + 8, (int) timeDiff);
-                this.mappedByteBuffer.putInt(absIndexPos + 4 + 8 + 4, slotValue);
+                this.mappedByteBuffer.putInt(absIndexPos + 4 + 8 + 4, slotValue);//preSlotValue，链表
 
                 this.mappedByteBuffer.putInt(absSlotPos, this.indexHeader.getIndexCount());
 
@@ -186,6 +191,13 @@ public class IndexFile {
         return result;
     }
 
+    /**
+     *                           //hashSlotNum=5000000;
+     *  \----indexHeader---\\---hashslot(key->slotValue)---\          indexNum=5000000 * 4;
+     *                                                       \---slotValue（keyHash phyoffset timeDiff prevIndexRead）---\
+     *   hashslot-->slotValue1-->slotValue2-->slotValue3
+     *
+     * */
     public void selectPhyOffset(final List<Long> phyOffsets, final String key, final int maxNum,
         final long begin, final long end, boolean lock) {
         if (this.mappedFile.hold()) {
