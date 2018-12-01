@@ -481,7 +481,7 @@ public class MappedFile extends ReferenceResource {
     /**
      * @return The max position which have valid data
      */
-    public int getReadPosition() {
+    public int getReadPosition() {//channel中的最大pos,不是bytebuffer也不是disk的最大pos
         return this.writeBuffer == null ? this.wrotePosition.get() : this.committedPosition.get();
     }
 

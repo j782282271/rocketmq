@@ -115,7 +115,7 @@ public class CommitLog {
         return this.mappedFileQueue.getFlushedWhere();
     }
 
-    public long getMaxOffset() {
+    public long getMaxOffset() {//channel中的最大pos,不是bytebuffer也不是disk的最大pos
         return this.mappedFileQueue.getMaxOffset();
     }
 
@@ -832,6 +832,7 @@ public class CommitLog {
         return topicQueueTable;
     }
 
+    //defaultMessageStore.recoverTopicQueueTable初始化的时候调用此方法
     public void setTopicQueueTable(HashMap<String, Long> topicQueueTable) {
         this.topicQueueTable = topicQueueTable;
     }
@@ -872,6 +873,7 @@ public class CommitLog {
         mappedFileQueue.checkSelf();
     }
 
+    //加锁耗时
     public long lockTimeMills() {
         long diff = 0;
         long begin = this.beginTimeInLock;

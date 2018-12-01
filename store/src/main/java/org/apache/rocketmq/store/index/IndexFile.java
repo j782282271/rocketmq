@@ -196,7 +196,7 @@ public class IndexFile {
      *  \----indexHeader---\\---hashslot(key->slotValue)---\          indexNum=5000000 * 4;
      *                                                       \---slotValue（keyHash phyoffset timeDiff prevIndexRead）---\
      *   hashslot-->slotValue1-->slotValue2-->slotValue3
-     *
+     *   可能取出好几个，因为key的hash可能重复
      * */
     public void selectPhyOffset(final List<Long> phyOffsets, final String key, final int maxNum,
         final long begin, final long end, boolean lock) {
@@ -208,15 +208,9 @@ public class IndexFile {
             FileLock fileLock = null;
             try {
                 if (lock) {
-                    // fileLock = this.fileChannel.lock(absSlotPos,
-                    // hashSlotSize, true);
                 }
 
                 int slotValue = this.mappedByteBuffer.getInt(absSlotPos);
-                // if (fileLock != null) {
-                // fileLock.release();
-                // fileLock = null;
-                // }
 
                 if (slotValue <= invalidIndex || slotValue > this.indexHeader.getIndexCount()
                     || this.indexHeader.getIndexCount() <= 1) {

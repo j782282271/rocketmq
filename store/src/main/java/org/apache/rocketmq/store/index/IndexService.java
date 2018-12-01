@@ -154,6 +154,7 @@ public class IndexService {
         }
     }
 
+    //可能取出好几个，因为key的hash可能重复
     public QueryOffsetResult queryOffset(String topic, String key, int maxNum, long begin, long end) {
         List<Long> phyOffsets = new ArrayList<Long>(maxNum);
 

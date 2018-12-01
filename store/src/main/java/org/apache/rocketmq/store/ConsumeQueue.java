@@ -167,6 +167,7 @@ public class ConsumeQueue {
     }
 
     //返回总的mappedFile的offset，除以单元数
+    //即返回logicOffset
     public long getOffsetInQueueByTime(final long timestamp) {
         MappedFile mappedFile = this.mappedFileQueue.getMappedFileByTime(timestamp);
         if (mappedFile != null) {
@@ -372,6 +373,8 @@ public class ConsumeQueue {
         return cnt;
     }
 
+    //删除过期commitLog的时候会调用此方法，删除consumeQueue多余文件
+    //初始化的时候获取commitLog的最小offset，也会调用此方法，删除consumeQueue多余文件
     //找到mappedFileQueue中最小的phyOffset且比参数phyMinOffset大，
     //将phyOffset所属文件的fileFromOffset加phyOffset所在位置偏移量 赋值给this.minLogicOffset
     public void correctMinOffset(long phyMinOffset) {
@@ -459,8 +462,7 @@ public class ConsumeQueue {
         this.defaultMessageStore.getRunningFlags().makeLogicsQueueError();
     }
 
-    private boolean putMessagePositionInfo(final long offset, final int size, final long tagsCode,
-                                           final long cqOffset) {
+    private boolean putMessagePositionInfo(final long offset, final int size, final long tagsCode, final long cqOffset) {
 
         if (offset <= this.maxPhysicOffset) {
             return true;

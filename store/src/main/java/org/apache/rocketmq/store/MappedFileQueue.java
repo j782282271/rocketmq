@@ -299,7 +299,7 @@ public class MappedFileQueue {
         return -1;
     }
 
-    public long getMaxOffset() {
+    public long getMaxOffset() {//channel中的最大pos,不是bytebuffer也不是disk的最大pos
         MappedFile mappedFile = getLastMappedFile();
         if (mappedFile != null) {
             return mappedFile.getFileFromOffset() + mappedFile.getReadPosition();
