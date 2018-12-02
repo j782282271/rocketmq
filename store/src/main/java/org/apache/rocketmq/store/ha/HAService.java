@@ -60,9 +60,11 @@ public class HAService {
 
     public HAService(final DefaultMessageStore defaultMessageStore) throws IOException {
         this.defaultMessageStore = defaultMessageStore;
+        //master创建server
         this.acceptSocketService =
             new AcceptSocketService(defaultMessageStore.getMessageStoreConfig().getHaListenPort());
         this.groupTransferService = new GroupTransferService();
+        //slave创建client
         this.haClient = new HAClient();
     }
 
@@ -102,10 +104,6 @@ public class HAService {
     public AtomicInteger getConnectionCount() {
         return connectionCount;
     }
-
-    // public void notifyTransferSome() {
-    // this.groupTransferService.notifyTransferSome();
-    // }
 
     public void start() throws Exception {
         this.acceptSocketService.beginAccept();
@@ -159,7 +157,7 @@ public class HAService {
      * Listens to slave connections to create {@link HAConnection}.
      */
     //master开启socket服务,接收salve发来的连接请求，为每个slave创建一个HAConnection
-    // HAConnection中有读写线程，分别新建selector监听各自socketChannel的读写事件
+    //HAConnection中有读写线程，分别新建selector监听各自socketChannel的读写事件
     class AcceptSocketService extends ServiceThread {
         private final SocketAddress socketAddressListen;
         private ServerSocketChannel serverSocketChannel;
@@ -253,6 +251,7 @@ public class HAService {
 
     /**
      * GroupTransferService Service
+     * 同步复制到slave才会使用此类，异步复制到slave用不到
      */
     class GroupTransferService extends ServiceThread {
 
@@ -410,10 +409,12 @@ public class HAService {
             this.byteBufferBackup = tmp;
         }
 
+        //master发来消息，client在此收到消息保存msg
         private boolean processReadEvent() {
             int readSizeZeroTimes = 0;
             while (this.byteBufferRead.hasRemaining()) {
                 try {
+                    //channel-->byteBuffer
                     int readSize = this.socketChannel.read(this.byteBufferRead);
                     if (readSize > 0) {
                         lastWriteTimestamp = HAService.this.defaultMessageStore.getSystemClock().now();
@@ -599,26 +600,6 @@ public class HAService {
 
             log.info(this.getServiceName() + " service end");
         }
-        // private void disableWriteFlag() {
-        // if (this.socketChannel != null) {
-        // SelectionKey sk = this.socketChannel.keyFor(this.selector);
-        // if (sk != null) {
-        // int ops = sk.interestOps();
-        // ops &= ~SelectionKey.OP_WRITE;
-        // sk.interestOps(ops);
-        // }
-        // }
-        // }
-        // private void enableWriteFlag() {
-        // if (this.socketChannel != null) {
-        // SelectionKey sk = this.socketChannel.keyFor(this.selector);
-        // if (sk != null) {
-        // int ops = sk.interestOps();
-        // ops |= SelectionKey.OP_WRITE;
-        // sk.interestOps(ops);
-        // }
-        // }
-        // }
 
         @Override
         public String getServiceName() {

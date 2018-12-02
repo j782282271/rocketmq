@@ -16,17 +16,18 @@
  */
 package org.apache.rocketmq.store.ha;
 
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.SelectionKey;
-import java.nio.channels.Selector;
-import java.nio.channels.SocketChannel;
 import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.remoting.common.RemotingUtil;
 import org.apache.rocketmq.store.SelectMappedBufferResult;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
 
 //一个slave一个conn，master会存所有slave的conn的list，属于master
 public class HAConnection {
@@ -79,6 +80,7 @@ public class HAConnection {
         return socketChannel;
     }
 
+    //master作为server，准备读取slave发来的offset消息，然后通知write线程，把master大于offset的消息，把msg传输给slave
     class ReadSocketService extends ServiceThread {
         private static final int READ_MAX_BUFFER_SIZE = 1024 * 1024;
         private final Selector selector;
@@ -192,6 +194,7 @@ public class HAConnection {
         }
     }
 
+    //master作为server向slave传输msg
     class WriteSocketService extends ServiceThread {
         private final Selector selector;
         private final SocketChannel socketChannel;
@@ -226,10 +229,9 @@ public class HAConnection {
                     if (-1 == this.nextTransferFromWhere) {//第一次传输
                         if (0 == HAConnection.this.slaveRequestOffset) {//slave没有数据，从0开始
                             long masterOffset = HAConnection.this.haService.getDefaultMessageStore().getCommitLog().getMaxOffset();
-                            masterOffset =
-                                masterOffset
-                                    - (masterOffset % HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig()
-                                    .getMapedFileSizeCommitLog());
+                            //master当前commitLog的startOffset
+                            masterOffset = masterOffset -
+                                    (masterOffset % HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig().getMapedFileSizeCommitLog());
 
                             if (masterOffset < 0) {
                                 masterOffset = 0;
@@ -241,16 +243,16 @@ public class HAConnection {
                         }
 
                         log.info("master transfer data from " + this.nextTransferFromWhere + " to slave[" + HAConnection.this.clientAddr
-                            + "], and slave request " + HAConnection.this.slaveRequestOffset);
+                                + "], and slave request " + HAConnection.this.slaveRequestOffset);
                     }
 
                     if (this.lastWriteOver) {
 
                         long interval =
-                            HAConnection.this.haService.getDefaultMessageStore().getSystemClock().now() - this.lastWriteTimestamp;
+                                HAConnection.this.haService.getDefaultMessageStore().getSystemClock().now() - this.lastWriteTimestamp;
 
                         if (interval > HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig()
-                            .getHaSendHeartbeatInterval()) {//长时间没有心跳，则发心跳
+                                .getHaSendHeartbeatInterval()) {//长时间没有心跳，则发心跳
 
                             // Build Header
                             this.byteBufferHeader.position(0);
@@ -259,6 +261,7 @@ public class HAConnection {
                             this.byteBufferHeader.putInt(0);
                             this.byteBufferHeader.flip();
 
+                            //发送数据
                             this.lastWriteOver = this.transferData();
                             if (!this.lastWriteOver)
                                 continue;
@@ -268,9 +271,9 @@ public class HAConnection {
                         if (!this.lastWriteOver)
                             continue;
                     }
-                    //发送数据
+                    //上面面发送数据完毕，读取下次需要传输的commitLog msg，并传输数据
                     SelectMappedBufferResult selectResult =
-                        HAConnection.this.haService.getDefaultMessageStore().getCommitLogData(this.nextTransferFromWhere);
+                            HAConnection.this.haService.getDefaultMessageStore().getCommitLogData(this.nextTransferFromWhere);
                     if (selectResult != null) {//分页发送
                         int size = selectResult.getSize();
                         if (size > HAConnection.this.haService.getDefaultMessageStore().getMessageStoreConfig().getHaTransferBatchSize()) {

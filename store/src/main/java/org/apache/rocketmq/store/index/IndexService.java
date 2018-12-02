@@ -203,6 +203,7 @@ public class IndexService {
         IndexFile indexFile = retryGetAndCreateIndexFile();
         if (indexFile != null) {
             long endPhyOffset = indexFile.getEndPhyOffset();
+
             DispatchRequest msg = req;
             String topic = msg.getTopic();
             String keys = msg.getKeys();
