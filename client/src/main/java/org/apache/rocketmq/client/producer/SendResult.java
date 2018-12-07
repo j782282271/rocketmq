@@ -21,10 +21,19 @@ import org.apache.rocketmq.common.message.MessageQueue;
 
 public class SendResult {
     private SendStatus sendStatus;
+    /**
+     * 含有ip:port和commitLog的phyoffset信息可以decode出来
+     */
     private String msgId;
     private MessageQueue messageQueue;
+    /**
+     * 队列的offset
+     */
     private long queueOffset;
     private String transactionId;
+    /**
+     * 含有ip:port和commitLog的phyoffset信息可以decode出来，和msgId格式相同
+     */
     private String offsetMsgId;
     private String regionId;
     private boolean traceOn = true;
@@ -33,7 +42,7 @@ public class SendResult {
     }
 
     public SendResult(SendStatus sendStatus, String msgId, String offsetMsgId, MessageQueue messageQueue,
-        long queueOffset) {
+                      long queueOffset) {
         this.sendStatus = sendStatus;
         this.msgId = msgId;
         this.offsetMsgId = offsetMsgId;
@@ -42,8 +51,8 @@ public class SendResult {
     }
 
     public SendResult(final SendStatus sendStatus, final String msgId, final MessageQueue messageQueue,
-        final long queueOffset, final String transactionId,
-        final String offsetMsgId, final String regionId) {
+                      final long queueOffset, final String transactionId,
+                      final String offsetMsgId, final String regionId) {
         this.sendStatus = sendStatus;
         this.msgId = msgId;
         this.messageQueue = messageQueue;
@@ -128,6 +137,6 @@ public class SendResult {
     @Override
     public String toString() {
         return "SendResult [sendStatus=" + sendStatus + ", msgId=" + msgId + ", offsetMsgId=" + offsetMsgId + ", messageQueue=" + messageQueue
-            + ", queueOffset=" + queueOffset + "]";
+                + ", queueOffset=" + queueOffset + "]";
     }
 }
