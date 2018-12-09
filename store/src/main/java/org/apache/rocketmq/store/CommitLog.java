@@ -528,6 +528,8 @@ public class CommitLog {
         StoreStatsService storeStatsService = this.defaultMessageStore.getStoreStatsService();
 
         String topic = msg.getTopic();
+        //queueId，用于计算哪个queue,然后再其上记录的AtomicLong加1即可变为queue中的logicOffset
+        //每个queue下的logicOffset是递增的
         int queueId = msg.getQueueId();
 
         final int tranType = MessageSysFlag.getTransactionValue(msg.getSysFlag());

@@ -77,6 +77,9 @@ public class PullAPIWrapper {
             List<MessageExt> msgList = MessageDecoder.decodes(byteBuffer);
 
             List<MessageExt> msgListFilterAgain = msgList;
+            //用tag过滤，本consumer(属于consumer_this_group)会把订阅的topic下的所有tag的消息都拉下来
+            //然后使用本consumer关心的tag，过滤掉不关心的tag，然后告诉broker offset
+            // 即使不关心的tag一旦被拉取到了，也会算在offset内，也就是说被拉取到的tag即使自己不关心没消费，同一group其它节点也无法消费他了
             if (!subscriptionData.getTagsSet().isEmpty() && !subscriptionData.isClassFilterMode()) {
                 msgListFilterAgain = new ArrayList<MessageExt>(msgList.size());
                 for (MessageExt msg : msgList) {
