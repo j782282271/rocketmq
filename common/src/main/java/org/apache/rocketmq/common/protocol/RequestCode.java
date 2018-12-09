@@ -52,6 +52,7 @@ public class RequestCode {
 
     public static final int UNREGISTER_CLIENT = 35;
 
+    //consumer消费异常把消息发回broker，以便retry
     public static final int CONSUMER_SEND_MSG_BACK = 36;
 
     public static final int END_TRANSACTION = 37;
