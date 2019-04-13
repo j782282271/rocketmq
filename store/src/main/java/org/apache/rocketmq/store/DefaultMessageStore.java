@@ -454,10 +454,17 @@ public class DefaultMessageStore implements MessageStore {
                 status = GetMessageStatus.OFFSET_OVERFLOW_ONE;
                 nextBeginOffset = nextOffsetCorrection(offset, offset);
             } else if (offset > maxOffset) {
+                //请求的offset比最大的offset还大，可能是以下两种情况：
+                //1master挂掉，从slave消费，更新slave和consumer的最大offset，master启动，consumer像master请求他最大的offset，自然比msater的maxOffset大
+                //2人为删除了broker的consumequeue，broker收到消息，会创建consumequeue/topic/0文件，写入offset=0，consumer仍然从他认为的offset(如30)消费，30>0,(此情况如果broker没收到消息也许会走NO_MESSAGE_IN_QUEUE)
+                //消费者拉到该情况的消息处理，在DefaultMQPushConsumerImpl,pullCallback.onSuccess:OFFSET_ILLEGAL处理逻辑，会删除其processQueue,并更新remote(或者local)的maxOffset
+                //然后重新reblance
                 status = GetMessageStatus.OFFSET_OVERFLOW_BADLY;
                 if (0 == minOffset) {
+                    //minOffset==0有可能是consumequeue被人删了，即情况2，新来的数据都是新的数据，即从0开始消费，纠正offset，下次从从0开始消费
                     nextBeginOffset = nextOffsetCorrection(offset, minOffset);
                 } else {
+                    //minOffset不等于零，有可能是情况1，纠正offset，下次从从maxOffset开始消费
                     nextBeginOffset = nextOffsetCorrection(offset, maxOffset);
                 }
             } else {
@@ -1059,6 +1066,7 @@ public class DefaultMessageStore implements MessageStore {
 
     private long nextOffsetCorrection(long oldOffset, long newOffset) {
         long nextOffset = oldOffset;
+        //master才correct offset,如果是salve，那么设置了offsetCheckInSlave才correct offset
         if (this.getMessageStoreConfig().getBrokerRole() != BrokerRole.SLAVE || this.getMessageStoreConfig().isOffsetCheckInSlave()) {
             nextOffset = newOffset;
         }
