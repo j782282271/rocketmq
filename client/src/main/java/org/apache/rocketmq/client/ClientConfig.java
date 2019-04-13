@@ -23,7 +23,12 @@ import org.apache.rocketmq.remoting.netty.TlsSystemConfig;
 import org.apache.rocketmq.remoting.protocol.LanguageCode;
 
 /**
- * Client Common configuration
+ * Client端nameServer配置
+ * Client端ip获取
+ * Client端instanceName
+ * 从nameServ获取信息的周期
+ * 与Broker心跳时间
+ * 持久化offset的周期
  */
 public class ClientConfig {
     public static final String SEND_MESSAGE_WITH_VIP_CHANNEL_PROPERTY = "com.rocketmq.sendMessageWithVIPChannel";

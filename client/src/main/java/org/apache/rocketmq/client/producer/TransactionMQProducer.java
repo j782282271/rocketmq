@@ -71,6 +71,10 @@ public class TransactionMQProducer extends DefaultMQProducer {
         return executorService;
     }
 
+    /**
+     * 事物producer会使用，使用它异步调用本地listener检查本地事物状态
+     * 其使用见：DefaultMQProducerImpl.checkTransactionState
+     */
     public void setExecutorService(ExecutorService executorService) {
         this.executorService = executorService;
     }

@@ -24,34 +24,41 @@ import org.apache.rocketmq.remoting.exception.RemotingException;
 
 /**
  * Base interface for MQ management
+ * 创建topic
+ * 按时间查找某个messagequeue的offset
+ * 查找某个messagequeue的最大最小offset
+ * 查找某个messagequeue的最早存储时间
+ * 根据offsetMsgId查找某一条消息
+ * 根据topic+msgId查找某一条消息
+ * 根据key+时间范围查找满足条件的消息
  */
 public interface MQAdmin {
     /**
      * Creates an topic
      *
-     * @param key accesskey
+     * @param key      accesskey
      * @param newTopic topic name
      * @param queueNum topic's queue number
      */
     void createTopic(final String key, final String newTopic, final int queueNum)
-        throws MQClientException;
+            throws MQClientException;
 
     /**
      * Creates an topic
      *
-     * @param key accesskey
-     * @param newTopic topic name
-     * @param queueNum topic's queue number
+     * @param key          accesskey
+     * @param newTopic     topic name
+     * @param queueNum     topic's queue number
      * @param topicSysFlag topic system flag
      */
     void createTopic(String key, String newTopic, int queueNum, int topicSysFlag)
-        throws MQClientException;
+            throws MQClientException;
 
     /**
      * Gets the message queue offset according to some time in milliseconds<br>
      * be cautious to call because of more IO overhead
      *
-     * @param mq Instance of MessageQueue
+     * @param mq        Instance of MessageQueue
      * @param timestamp from when in milliseconds.
      * @return offset
      */
@@ -82,31 +89,31 @@ public interface MQAdmin {
     long earliestMsgStoreTime(final MessageQueue mq) throws MQClientException;
 
     /**
-     * Query message according tto message id
+     * Query message according to message id
      *
      * @param offsetMsgId message id
      * @return message
      */
     MessageExt viewMessage(final String offsetMsgId) throws RemotingException, MQBrokerException,
-        InterruptedException, MQClientException;
+            InterruptedException, MQClientException;
 
     /**
      * Query messages
      *
-     * @param topic message topic
-     * @param key message key index word
+     * @param topic  message topic
+     * @param key    message key index word
      * @param maxNum max message number
-     * @param begin from when
-     * @param end to when
+     * @param begin  from when
+     * @param end    to when
      * @return Instance of QueryResult
      */
     QueryResult queryMessage(final String topic, final String key, final int maxNum, final long begin,
-        final long end) throws MQClientException, InterruptedException;
+                             final long end) throws MQClientException, InterruptedException;
 
     /**
      * @return The {@code MessageExt} of given msgId
      */
     MessageExt viewMessage(String topic,
-        String msgId) throws RemotingException, MQBrokerException, InterruptedException, MQClientException;
+                           String msgId) throws RemotingException, MQBrokerException, InterruptedException, MQClientException;
 
 }

@@ -16,10 +16,17 @@
  */
 package org.apache.rocketmq.client;
 
-import java.util.List;
 import org.apache.rocketmq.common.message.MessageExt;
 
+import java.util.List;
+
+/**
+ * 一般根据key查找消息，可能会查找到很多条消息所以含有msg的list
+ **/
 public class QueryResult {
+    /**
+     * 同一个key可能有多条消息，indexLastUpdateTimestamp记录了最后一条消息的时间
+     **/
     private final long indexLastUpdateTimestamp;
     private final List<MessageExt> messageList;
 
@@ -39,6 +46,6 @@ public class QueryResult {
     @Override
     public String toString() {
         return "QueryResult [indexLastUpdateTimestamp=" + indexLastUpdateTimestamp + ", messageList="
-            + messageList + "]";
+                + messageList + "]";
     }
 }
