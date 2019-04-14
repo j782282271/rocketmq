@@ -16,18 +16,27 @@
  */
 package org.apache.rocketmq.client.impl.producer;
 
-import java.util.ArrayList;
-import java.util.List;
 import org.apache.rocketmq.client.common.ThreadLocalIndex;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.protocol.route.QueueData;
 import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class TopicPublishInfo {
     private boolean orderTopic = false;
     private boolean haveTopicRouterInfo = false;
+    /**
+     * 存储了所有队列信息
+     */
     private List<MessageQueue> messageQueueList = new ArrayList<MessageQueue>();
     private volatile ThreadLocalIndex sendWhichQueue = new ThreadLocalIndex();
+    /**
+     * 该信息是从nameSer获取的topic路由信息，由该信息创建本类TopicPublishInfo
+     * 创建过程见：MQClientInstance.topicRouteData2TopicPublishInfo方法，根据topicRouteData中读写队列大小不断for循环创建
+     * this.messageQueueList
+     */
     private TopicRouteData topicRouteData;
 
     public boolean isOrderTopic() {
@@ -66,6 +75,10 @@ public class TopicPublishInfo {
         this.haveTopicRouterInfo = haveTopicRouterInfo;
     }
 
+    /**
+     * lastBrokerName==null第一次选择队列发送消息
+     * lastBrokerName不为null，说明上次发送到lastBrokerName该broker失败了，这一次要选择一个不同的broker发送消息
+     */
     public MessageQueue selectOneMessageQueue(final String lastBrokerName) {
         if (lastBrokerName == null) {
             return selectOneMessageQueue();
@@ -84,6 +97,9 @@ public class TopicPublishInfo {
         }
     }
 
+    /**
+     * 轮询选择一个mq发送
+     */
     public MessageQueue selectOneMessageQueue() {
         int index = this.sendWhichQueue.getAndIncrement();
         int pos = Math.abs(index) % this.messageQueueList.size();
@@ -92,6 +108,9 @@ public class TopicPublishInfo {
         return this.messageQueueList.get(pos);
     }
 
+    /**
+     * 获取该broker下的可写队列数量
+     */
     public int getQueueIdByBroker(final String brokerName) {
         for (int i = 0; i < topicRouteData.getQueueDatas().size(); i++) {
             final QueueData queueData = this.topicRouteData.getQueueDatas().get(i);
@@ -106,7 +125,7 @@ public class TopicPublishInfo {
     @Override
     public String toString() {
         return "TopicPublishInfo [orderTopic=" + orderTopic + ", messageQueueList=" + messageQueueList
-            + ", sendWhichQueue=" + sendWhichQueue + ", haveTopicRouterInfo=" + haveTopicRouterInfo + "]";
+                + ", sendWhichQueue=" + sendWhichQueue + ", haveTopicRouterInfo=" + haveTopicRouterInfo + "]";
     }
 
     public TopicRouteData getTopicRouteData() {

@@ -58,7 +58,7 @@ import java.util.concurrent.*;
  * 组合了DefaultMQProducer与TransactionMQProducer公共的一些功能：
  * 1存储、更新topic和broker的路由关系、topic列表
  * 2回查事物状态
- * 3发送消重试功能
+ * 3发送消重试功能，使用MQFaultStrategy策略，根据延迟和可用状态，选择broker，发消息，如果某个broker下线则namSer会通知，更新topic路由信息
  * 4封装发送消息底层所需要的结构
  * 5事物消息
  */

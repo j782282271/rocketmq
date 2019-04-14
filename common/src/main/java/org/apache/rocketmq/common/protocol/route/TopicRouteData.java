@@ -20,13 +20,18 @@
  */
 package org.apache.rocketmq.common.protocol.route;
 
+import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 
+/**
+ * nameSer存储的某个topic的路由信息
+ */
 public class TopicRouteData extends RemotingSerializable {
     private String orderTopicConf;
+    //读写队列数，不同broker的读写队列数可能不同，所以此处是list，用于记录不同broker的读写队列数
     private List<QueueData> queueDatas;
     private List<BrokerData> brokerDatas;
     private HashMap<String/* brokerAddr */, List<String>/* Filter Server */> filterServerTable;
@@ -131,6 +136,6 @@ public class TopicRouteData extends RemotingSerializable {
     @Override
     public String toString() {
         return "TopicRouteData [orderTopicConf=" + orderTopicConf + ", queueDatas=" + queueDatas
-            + ", brokerDatas=" + brokerDatas + ", filterServerTable=" + filterServerTable + "]";
+                + ", brokerDatas=" + brokerDatas + ", filterServerTable=" + filterServerTable + "]";
     }
 }

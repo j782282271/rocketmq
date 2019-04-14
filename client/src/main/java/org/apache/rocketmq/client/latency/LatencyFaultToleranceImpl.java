@@ -17,13 +17,22 @@
 
 package org.apache.rocketmq.client.latency;
 
+import org.apache.rocketmq.client.common.ThreadLocalIndex;
+
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
-import org.apache.rocketmq.client.common.ThreadLocalIndex;
 
+/**
+ * 1）排序选出比较靠前的broker
+ * **** 1.1可用的在前
+ * *****1.2低延迟的在前
+ * *****1.3最早要可用的在前
+ * 2）判断某个broker是否可用：
+ * 当前时间超过了延迟之后加的惩罚性时间，则认为可用了，即过很长时间后认为该broker可用
+ */
 public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> {
     private final ConcurrentHashMap<String, FaultItem> faultItemTable = new ConcurrentHashMap<String, FaultItem>(16);
 
@@ -48,6 +57,9 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
         }
     }
 
+    /**
+     * 当前时间超过了延迟之后加的惩罚性时间，则认为可用了，即过很长时间后认为该broker可用
+     */
     @Override
     public boolean isAvailable(final String name) {
         final FaultItem faultItem = this.faultItemTable.get(name);
@@ -62,6 +74,12 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
         this.faultItemTable.remove(name);
     }
 
+    /**
+     * 排序选出比较靠前的broker
+     * 1可用的在前
+     * 2低延迟的在前
+     * 3最早要可用的在前
+     */
     @Override
     public String pickOneAtLeast() {
         final Enumeration<FaultItem> elements = this.faultItemTable.elements();
@@ -80,6 +98,7 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
             if (half <= 0) {
                 return tmpList.get(0).getName();
             } else {
+                //在前一半中（前一半中集中了可用的、低延迟的、最快要恢复的broker）选择Worst的下一个
                 final int i = this.whichItemWorst.getAndIncrement() % half;
                 return tmpList.get(i).getName();
             }
@@ -91,13 +110,15 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
     @Override
     public String toString() {
         return "LatencyFaultToleranceImpl{" +
-            "faultItemTable=" + faultItemTable +
-            ", whichItemWorst=" + whichItemWorst +
-            '}';
+                "faultItemTable=" + faultItemTable +
+                ", whichItemWorst=" + whichItemWorst +
+                '}';
     }
 
     class FaultItem implements Comparable<FaultItem> {
+        //brokerName
         private final String name;
+        //发送耗时
         private volatile long currentLatency;
         private volatile long startTimestamp;
 
@@ -107,6 +128,7 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
 
         @Override
         public int compareTo(final FaultItem other) {
+            //可用的在前
             if (this.isAvailable() != other.isAvailable()) {
                 if (this.isAvailable())
                     return -1;
@@ -115,12 +137,14 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
                     return 1;
             }
 
+            //低延迟的在前
             if (this.currentLatency < other.currentLatency)
                 return -1;
             else if (this.currentLatency > other.currentLatency) {
                 return 1;
             }
 
+            //最早要可用的在前
             if (this.startTimestamp < other.startTimestamp)
                 return -1;
             else if (this.startTimestamp > other.startTimestamp) {
@@ -130,6 +154,9 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
             return 0;
         }
 
+        /**
+         * 当前时间超过startTimestamp则认为可用了，即过很长时间后认为该broker可用
+         */
         public boolean isAvailable() {
             return (System.currentTimeMillis() - startTimestamp) >= 0;
         }
@@ -162,10 +189,10 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
         @Override
         public String toString() {
             return "FaultItem{" +
-                "name='" + name + '\'' +
-                ", currentLatency=" + currentLatency +
-                ", startTimestamp=" + startTimestamp +
-                '}';
+                    "name='" + name + '\'' +
+                    ", currentLatency=" + currentLatency +
+                    ", startTimestamp=" + startTimestamp +
+                    '}';
         }
 
         public String getName() {
