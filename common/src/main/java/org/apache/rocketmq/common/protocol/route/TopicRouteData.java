@@ -27,12 +27,24 @@ import java.util.HashMap;
 import java.util.List;
 
 /**
- * nameSer存储的某个topic的路由信息
+ * nameSer存储的某个topic的路由信息（物理）
+ * 不同broker的读写队列数
+ * 每个broker的不同集群、ip地址信息
  */
 public class TopicRouteData extends RemotingSerializable {
+    /**
+     * orderTopicConf格式：brokerName1:6;brokerName2:8;brokerName3:16
+     * 解析见：MQClientInstance.topicRouteData2TopicPublishInfo方法
+     * 如果本字段不为空，则其他字段都没用了，只会用到本字段
+     */
     private String orderTopicConf;
-    //读写队列数，不同broker的读写队列数可能不同，所以此处是list，用于记录不同broker的读写队列数
+    /**
+     * 读写队列数，不同broker的读写队列数可能不同，所以此处是list，用于记录不同broker的读写队列数
+     */
     private List<QueueData> queueDatas;
+    /**
+     * broker详细信息，包括集群信息，ip地址
+     */
     private List<BrokerData> brokerDatas;
     private HashMap<String/* brokerAddr */, List<String>/* Filter Server */> filterServerTable;
 

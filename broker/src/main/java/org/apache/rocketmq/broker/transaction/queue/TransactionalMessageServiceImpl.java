@@ -202,7 +202,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                         if (null != checkImmunityTimeStr) {
                             //checkImmunityTimeStr变为long，乘以1000
                             checkImmunityTime = getImmunityTime(checkImmunityTimeStr, transactionTimeout);
-                            //当前消息的生命小于免检时间
+                            //当前消息的生命小于免检（免回查）时间
                             if (valueOfCurrentMinusBorn < checkImmunityTime) {
                                 //checkPrepareQueueOffset返回true意味着，在免检时间内已经得到commit/rollback消息了，该消息可以跳过了
                                 if (checkPrepareQueueOffset(removeMap, doneOpOffset, msgExt, checkImmunityTime)) {

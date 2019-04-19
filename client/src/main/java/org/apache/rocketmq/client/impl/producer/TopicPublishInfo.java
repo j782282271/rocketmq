@@ -24,7 +24,13 @@ import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 某个topic的队列信息（逻辑）
+ */
 public class TopicPublishInfo {
+    /**
+     * topicRouteData.orderTopicConf不为空则此值为true
+     */
     private boolean orderTopic = false;
     private boolean haveTopicRouterInfo = false;
     /**

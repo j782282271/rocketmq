@@ -22,6 +22,12 @@ import org.apache.rocketmq.common.protocol.header.CheckTransactionStateRequestHe
 
 import java.util.Set;
 
+/**
+ * 获取topic列表
+ * 事务listener
+ * 回查listener
+ * 更新topic
+ */
 public interface MQProducerInner {
     Set<String> getPublishTopicList();
 
@@ -30,9 +36,9 @@ public interface MQProducerInner {
     TransactionListener checkListener();
 
     void checkTransactionState(
-        final String addr,
-        final MessageExt msg,
-        final CheckTransactionStateRequestHeader checkRequestHeader);
+            final String addr,
+            final MessageExt msg,
+            final CheckTransactionStateRequestHeader checkRequestHeader);
 
     void updateTopicPublishInfo(final String topic, final TopicPublishInfo info);
 

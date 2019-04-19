@@ -21,10 +21,14 @@
 package org.apache.rocketmq.common.protocol.route;
 
 public class QueueData implements Comparable<QueueData> {
-//    不同broker的读写队列数可能不同
+    /**
+     * 不同broker的读写队列数可能不同
+     */
     private String brokerName;
-    //readQueueNums：决定了consume消费的MessageQueue共有几个
-    //writeQueueNums：决定了producer发送消息的MessageQueue共有几个
+    /**
+     * readQueueNums：决定了consume消费的MessageQueue共有几个
+     * writeQueueNums：决定了producer发送消息的MessageQueue共有几个
+     */
     private int readQueueNums;
     private int writeQueueNums;
     private int perm;
