@@ -76,18 +76,21 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class MQClientAPIImpl {
 
     private final static InternalLogger log = ClientLogger.getLog();
-    private static boolean sendSmartMsg =
-            Boolean.parseBoolean(System.getProperty("org.apache.rocketmq.client.sendSmartMsg", "true"));
+    private static boolean sendSmartMsg = Boolean.parseBoolean(System.getProperty("org.apache.rocketmq.client.sendSmartMsg", "true"));
 
     static {
         System.setProperty(RemotingCommand.REMOTING_VERSION_KEY, Integer.toString(MQVersion.CURRENT_VERSION));
     }
 
+    //底层通信
     private final RemotingClient remotingClient;
     //用于动态获取nameSer的地址
     private final TopAddressing topAddressing;
+    //各种消息的处理器
     private final ClientRemotingProcessor clientRemotingProcessor;
+    //从http服务器上动态拉取的nameSer地址
     private String nameSrvAddr = null;
+    //client的配置
     private ClientConfig clientConfig;
 
     public MQClientAPIImpl(final NettyClientConfig nettyClientConfig, final ClientRemotingProcessor clientRemotingProcessor,
