@@ -63,6 +63,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * 触发属性mQClientAPIImpl初始化nameSer信息，如果没有写死nameSer则从http获取nameSer地址，并定时获取动态更新nameSer地址
  * 一些定时任务：定时更新topic物理逻辑路由信息、定时删除失效broker、定时发心跳、定时持久化consumer offset、定时调用调整consumer线程池大小
  * 重置offset、获取每个队列的消费进度
+ * 管理了MQClientAPIImpl、MQAdminImpl
  */
 public class MQClientInstance {
     private final static long LOCK_TIMEOUT_MILLIS = 3000;

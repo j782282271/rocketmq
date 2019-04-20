@@ -20,15 +20,19 @@
  */
 package org.apache.rocketmq.common.namesrv;
 
-import java.io.IOException;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.common.help.FAQUrl;
+import org.apache.rocketmq.common.utils.HttpTinyClient;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
-import org.apache.rocketmq.common.utils.HttpTinyClient;
 
+import java.io.IOException;
+
+/**
+ * 用于动态获取nameSer的地址
+ */
 public class TopAddressing {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);
 
@@ -89,7 +93,7 @@ public class TopAddressing {
 
         if (verbose) {
             String errorMsg =
-                "connect to " + url + " failed, maybe the domain name " + MixAll.getWSAddr() + " not bind in /etc/hosts";
+                    "connect to " + url + " failed, maybe the domain name " + MixAll.getWSAddr() + " not bind in /etc/hosts";
             errorMsg += FAQUrl.suggestTodo(FAQUrl.NAME_SERVER_ADDR_NOT_EXIST_URL);
 
             log.warn(errorMsg);
