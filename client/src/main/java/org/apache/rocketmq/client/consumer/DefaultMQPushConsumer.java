@@ -327,8 +327,8 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
     }
 
     @Override
-    public MessageExt viewMessage(
-            String offsetMsgId) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+    public MessageExt viewMessage(String offsetMsgId)
+            throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         return this.defaultMQPushConsumerImpl.viewMessage(offsetMsgId);
     }
 
@@ -339,8 +339,8 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
     }
 
     @Override
-    public MessageExt viewMessage(String topic,
-                                  String msgId) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+    public MessageExt viewMessage(String topic, String msgId)
+            throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         try {
             MessageDecoder.decodeMessageId(msgId);
             return this.viewMessage(msgId);

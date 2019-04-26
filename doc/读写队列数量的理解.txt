@@ -1,0 +1,8 @@
+1）读数量设置为16，写数量设置为8
+则写的时候只是往前8个consumequeue逻辑队列中写数据
+读的时会从所有16个consumequeue逻辑队列中读数据，但是后8个consumequeue没有消息
+
+
+2）读数量设置为16，写数量设置为8
+则写的时候只是往所有16个consumequeue逻辑队列中写数据
+读的时只会从前8个consumequeue逻辑队列中读数据，后8个consumequeue有消息，但是无法消费

@@ -88,6 +88,11 @@ public class SendMessageRequestHeader implements CommandCustomHeader {
         this.defaultTopicQueueNums = defaultTopicQueueNums;
     }
 
+    /**
+     * producer发送消息的时有时候会指定mq,此queueId即为producer端写队列的id
+     * producer发送消息时放在this.queueId字段中
+     * broker收到消息，创建MessageExt，时将该id存储于MessageExt中
+     */
     public Integer getQueueId() {
         return queueId;
     }
