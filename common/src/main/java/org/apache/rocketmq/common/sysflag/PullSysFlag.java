@@ -16,14 +16,21 @@
  */
 package org.apache.rocketmq.common.sysflag;
 
+/**
+ * 拉取消息是时候consumer向broker传递该flag
+ */
 public class PullSysFlag {
+    //consumer拉取消息时告诉broker是否commitOffset
     private final static int FLAG_COMMIT_OFFSET = 0x1 << 0;
+    //
     private final static int FLAG_SUSPEND = 0x1 << 1;
+    //consumer拉取消息时告诉broker是否含有subExpress
     private final static int FLAG_SUBSCRIPTION = 0x1 << 2;
+    //consumer拉取消息时告诉broker是否是classFilter
     private final static int FLAG_CLASS_FILTER = 0x1 << 3;
 
     public static int buildSysFlag(final boolean commitOffset, final boolean suspend,
-        final boolean subscription, final boolean classFilter) {
+                                   final boolean subscription, final boolean classFilter) {
         int flag = 0;
 
         if (commitOffset) {

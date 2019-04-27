@@ -188,12 +188,14 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
     }
 
     /**
-     * 1如果本类被标记为暂停，则延迟一会儿再执行本方法
+     * 定义pull msg的方法
+     * 1如果本类被标记为暂停，则延迟一会儿再执行本方法，调用MQClientInstance.PullMessageService控制延迟pullMsg
      * 2流控，如果正在拉取的队列的msg数量、大小超过设置的阈值则一会儿再执行本方法
      * 3流控，如果是非顺序消费，如果正在拉取的队列的msg的Offset大于规定的span数量阈值，则延迟执行本方法
      * 4如果是顺序消费，第一次消费的时候，防止负载均衡抖动引起消费无序
-     * 5定义pullResult的解析方式
-     * 6
+     * 5定义拉取消息结果pullResult的解析方式
+     * 6创建PullSysFlag等底层接口需要的参数
+     * 7调用pullAPIWrapper.pullKernelImpl拉取消息
      */
     public void pullMessage(final PullRequest pullRequest) {
         final ProcessQueue processQueue = pullRequest.getProcessQueue();
@@ -413,7 +415,6 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
             if (this.defaultMQPushConsumer.isPostSubscriptionWhenPull() && !sd.isClassFilterMode()) {
                 subExpression = sd.getSubString();
             }
-
             classFilter = sd.isClassFilterMode();
         }
 
@@ -453,6 +454,9 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         }
     }
 
+    /**
+     * 调用MQClientInstance.PullMessageService控制延迟pullMsg
+     */
     private void executePullRequestLater(final PullRequest pullRequest, final long timeDelay) {
         this.mQClientFactory.getPullMessageService().executePullRequestLater(pullRequest, timeDelay);
     }
@@ -469,6 +473,9 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         return this.mQClientFactory.getConsumerStatsManager();
     }
 
+    /**
+     * 调用MQClientInstance.PullMessageService立即pullMsg
+     */
     public void executePullRequestImmediately(final PullRequest pullRequest) {
         this.mQClientFactory.getPullMessageService().executePullRequestImmediately(pullRequest);
     }
@@ -497,12 +504,20 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         this.messageListenerInner = messageListener;
     }
 
+    /**
+     * 停止暂停
+     * doRebalance
+     */
     public void resume() {
         this.pause = false;
         doRebalance();
         log.info("resume this consumer, {}", this.defaultMQPushConsumer.getConsumerGroup());
     }
 
+    /**
+     * 消费失败，重新将消息发回给broker，调用MQClientAPIImpl().consumerSendMessageBack发送
+     * 如果上面方法发送失败，则手动构造ReConsumeMsg，调用DefaultMQProducer().send(newMsg);发送
+     */
     public void sendMessageBack(MessageExt msg, int delayLevel, final String brokerName)
             throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         try {
@@ -1030,6 +1045,10 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         }
     }
 
+    /**
+     * updateTopicSubscribeInfoWhenSubscriptionChanged方法，根据自己关心的topic，调用mQClientFactory获取最新topic路由信息，
+     * 更新其topic路由信息，然后mQClientFactory回调本方法更新自己rebalanceImpl的topic路由信息
+     */
     @Override
     public void updateTopicSubscribeInfo(String topic, Set<MessageQueue> info) {
         Map<String, SubscriptionData> subTable = this.getSubscriptionInner();
