@@ -150,6 +150,8 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
     public Set<MessageQueue> fetchSubscribeMessageQueues(String topic) throws MQClientException {
         Set<MessageQueue> result = this.rebalanceImpl.getTopicSubscribeInfoTable().get(topic);
         if (null == result) {
+            //没有队列，则从nameSer拉取，拉取的结果存储在mQClientFactory实例内部，
+            //然后mQClientFactory还会调用this.updateTopicSubscribeInfo,在该方法中会调用rebalanceImpl的方法，将mq信息存入rebalance中
             this.mQClientFactory.updateTopicRouteInfoFromNameServer(topic);
             result = this.rebalanceImpl.getTopicSubscribeInfoTable().get(topic);
         }
@@ -185,6 +187,14 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         this.offsetStore = offsetStore;
     }
 
+    /**
+     * 1如果本类被标记为暂停，则延迟一会儿再执行本方法
+     * 2流控，如果正在拉取的队列的msg数量、大小超过设置的阈值则一会儿再执行本方法
+     * 3流控，如果是非顺序消费，如果正在拉取的队列的msg的Offset大于规定的span数量阈值，则延迟执行本方法
+     * 4如果是顺序消费，第一次消费的时候，防止负载均衡抖动引起消费无序
+     * 5定义pullResult的解析方式
+     * 6
+     */
     public void pullMessage(final PullRequest pullRequest) {
         final ProcessQueue processQueue = pullRequest.getProcessQueue();
         if (processQueue.isDropped()) {
@@ -246,6 +256,11 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         } else {
             if (processQueue.isLocked()) {
                 if (!pullRequest.isLockedFirst()) {
+                    //顺序消费，一次消费，因为复杂均衡的原因，防止切换消费服务，瞬间产生的并发问题，
+                    //会重新计算从哪里开始消费，计算值为broker的消费consume offset
+                    //如果计算出来的offset比pullRequest中的小，说明，负载均衡的一瞬间，另一台consumer服务，已消费完某一条消息，但没来得及提交offset
+                    //将自己计算的offset，作为真正的offset
+                    //标记非第一次消费
                     final long offset = this.rebalanceImpl.computePullFromWhere(pullRequest.getMessageQueue());
                     boolean brokerBusy = offset < pullRequest.getNextOffset();
                     log.info("the first time to pull message, so fix offset from broker. pullRequest: {} NewOffset: {} brokerBusy: {}",
@@ -255,6 +270,8 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                                 pullRequest, offset);
                     }
 
+                    //第一次消费msg，将本属性置位true，只在本地方调用一次该方法
+                    //不会有并发问题，
                     pullRequest.setLockedFirst(true);
                     pullRequest.setNextOffset(offset);
                 }
@@ -379,6 +396,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
             }
         };
 
+        //CLUSTERING模式，且commitOffset>0则需要commitOffset
         boolean commitOffsetEnable = false;
         long commitOffsetValue = 0L;
         if (MessageModel.CLUSTERING == this.defaultMQPushConsumer.getMessageModel()) {

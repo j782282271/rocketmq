@@ -23,6 +23,9 @@ public class PullRequest {
     private MessageQueue messageQueue;
     private ProcessQueue processQueue;
     private long nextOffset;
+    /**
+     * 第一次消费msg，将本属性置位true，置位true的方法只被调用一次，以后永远为true
+     */
     private boolean lockedFirst = false;
 
     public boolean isLockedFirst() {
@@ -91,7 +94,7 @@ public class PullRequest {
     @Override
     public String toString() {
         return "PullRequest [consumerGroup=" + consumerGroup + ", messageQueue=" + messageQueue
-            + ", nextOffset=" + nextOffset + "]";
+                + ", nextOffset=" + nextOffset + "]";
     }
 
     public ProcessQueue getProcessQueue() {
