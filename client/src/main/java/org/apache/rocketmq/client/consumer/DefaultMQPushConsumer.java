@@ -160,6 +160,8 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
 
     /**
      * Threshold for dynamic adjustment of the number of thread pool
+     * 内存中待消费的总的消息数量超过该值，则增加消费线程数量
+     * 内存中待消费的总的消息数小于过该值*0.8，则减少消费线程数量
      */
     private long adjustThreadPoolNumsThreshold = 100000;
 

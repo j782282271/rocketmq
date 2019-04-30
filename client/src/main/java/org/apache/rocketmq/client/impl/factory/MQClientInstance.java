@@ -331,7 +331,7 @@ public class MQClientInstance {
                 try {
                     /**
                      * 根据pushConsumer消情况调整pushConsumer线程池大小
-                     * */
+                     */
                     MQClientInstance.this.adjustThreadPool();
                 } catch (Exception e) {
                     log.error("ScheduledTask adjustThreadPool exception", e);
@@ -1074,7 +1074,7 @@ public class MQClientInstance {
     }
 
     /**
-     * 根据brokerName、brokerId找broker
+     * 根据brokerName、brokerId找brokerAddr
      * 如果没找到，则根据onlyThisBroker是否选择本brokerName的其他broker
      */
     public FindBrokerResult findBrokerAddressInSubscribe(final String brokerName, final long brokerId, final boolean onlyThisBroker) {
