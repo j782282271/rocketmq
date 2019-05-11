@@ -21,10 +21,14 @@ import org.apache.rocketmq.client.log.ClientLogger;
 import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.logging.InternalLogger;
 
+/**
+ * 定时rebalance，由MQClientInstance开启定时调用
+ * this.mqClientFactory.doRebalance();又会反调用MQClientInstance.doRebalance,
+ * 而MQClientInstance.doRebalance又会调用DefaultMQPushConsumerImpl.doRebalance
+ * DefaultMQPushConsumerImpl.doRebalance又会调用rebalanceImpl.doRebalance(this.isConsumeOrderly());完成真正的定时rebalance
+ */
 public class RebalanceService extends ServiceThread {
-    private static long waitInterval =
-        Long.parseLong(System.getProperty(
-            "rocketmq.client.rebalance.waitInterval", "20000"));
+    private static long waitInterval = Long.parseLong(System.getProperty("rocketmq.client.rebalance.waitInterval", "20000"));
     private final InternalLogger log = ClientLogger.getLog();
     private final MQClientInstance mqClientFactory;
 
