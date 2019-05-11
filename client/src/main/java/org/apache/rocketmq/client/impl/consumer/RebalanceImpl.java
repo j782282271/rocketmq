@@ -40,6 +40,7 @@ import java.util.concurrent.ConcurrentMap;
 public abstract class RebalanceImpl {
     protected static final InternalLogger log = ClientLogger.getLog();
     protected final ConcurrentMap<MessageQueue, ProcessQueue> processQueueTable = new ConcurrentHashMap<MessageQueue, ProcessQueue>(64);
+<<<<<<< HEAD
     /**
      * 由
      */
@@ -48,6 +49,12 @@ public abstract class RebalanceImpl {
     /**
      * 订阅信息，初始化的时候调用DefaultMQPushConsumerImpl.subscribe方法，向本map中注册
      */
+=======
+    //根据subscriptionInner从nameSer拉取下来的信息存到此处
+    protected final ConcurrentMap<String/* topic */, Set<MessageQueue>> topicSubscribeInfoTable =
+            new ConcurrentHashMap<String, Set<MessageQueue>>();
+    //consumer启动时，将自己的订阅信息放入此处
+>>>>>>> 431b7f15c7e85d42d42a6bff5ac1caf6f3b085e5
     protected final ConcurrentMap<String /* topic */, SubscriptionData> subscriptionInner =
             new ConcurrentHashMap<String, SubscriptionData>();
     protected String consumerGroup;
