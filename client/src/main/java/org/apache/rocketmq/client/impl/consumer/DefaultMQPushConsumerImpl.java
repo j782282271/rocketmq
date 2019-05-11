@@ -506,13 +506,8 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
     }
 
     /**
-<<<<<<< HEAD
-     * 消费失败，重新将消息发回给broker，调用MQClientAPIImpl().consumerSendMessageBack发送
-     * 如果上面方法发送失败，则手动构造ReConsumeMsg，调用DefaultMQProducer().send(newMsg);发送
-=======
      * 消费失败，将消息从consumer发回broker(该消息所属broker)，调用底层方法：getMQClientAPIImpl().consumerSendMessageBack，构造CONSUMER_SEND_MSG_BACK消息
      * 如果发回失败，可能是这个broker挂了，则调用底层getDefaultMQProducer().send方法，手动构建reconsume消息，和producer一样发消息
->>>>>>> 431b7f15c7e85d42d42a6bff5ac1caf6f3b085e5
      */
     public void sendMessageBack(MessageExt msg, int delayLevel, final String brokerName)
             throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
