@@ -59,7 +59,7 @@ public class AllocateMessageQueueAveragely implements AllocateMessageQueueStrate
          *
          * 2复杂理解：
          * 如果以下
-         * currentCID=1
+         * currentCID=c1
          * cidAll  c0  c1  c2
          * mqAll   q0  q1  q2  q3  q4  q5  q6  q7
          * 则index=1、mod=2、mqAll.size()/cidAll.size()=8/3=2

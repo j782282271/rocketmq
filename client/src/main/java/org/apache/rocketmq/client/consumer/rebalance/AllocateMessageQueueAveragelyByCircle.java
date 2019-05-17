@@ -16,12 +16,13 @@
  */
 package org.apache.rocketmq.client.consumer.rebalance;
 
-import java.util.ArrayList;
-import java.util.List;
 import org.apache.rocketmq.client.consumer.AllocateMessageQueueStrategy;
 import org.apache.rocketmq.client.log.ClientLogger;
-import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.logging.InternalLogger;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Cycle average Hashing queue algorithm
@@ -30,8 +31,7 @@ public class AllocateMessageQueueAveragelyByCircle implements AllocateMessageQue
     private final InternalLogger log = ClientLogger.getLog();
 
     @Override
-    public List<MessageQueue> allocate(String consumerGroup, String currentCID, List<MessageQueue> mqAll,
-        List<String> cidAll) {
+    public List<MessageQueue> allocate(String consumerGroup, String currentCID, List<MessageQueue> mqAll, List<String> cidAll) {
         if (currentCID == null || currentCID.length() < 1) {
             throw new IllegalArgumentException("currentCID is empty");
         }
@@ -44,13 +44,16 @@ public class AllocateMessageQueueAveragelyByCircle implements AllocateMessageQue
 
         List<MessageQueue> result = new ArrayList<MessageQueue>();
         if (!cidAll.contains(currentCID)) {
-            log.info("[BUG] ConsumerGroup: {} The consumerId: {} not in cidAll: {}",
-                consumerGroup,
-                currentCID,
-                cidAll);
+            log.info("[BUG] ConsumerGroup: {} The consumerId: {} not in cidAll: {}", consumerGroup, currentCID, cidAll);
             return result;
         }
 
+        /**
+         * currentCID=c1
+         * cidAll  c0  c1  c2
+         * mqAll   q0  q1  q2  q3  q4  q5  q6  q7
+         * 则q1、q4、q7被分给c1
+         */
         int index = cidAll.indexOf(currentCID);
         for (int i = index; i < mqAll.size(); i++) {
             if (i % cidAll.size() == index) {
