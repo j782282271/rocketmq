@@ -16,28 +16,34 @@
  */
 package org.apache.rocketmq.client.impl.consumer;
 
-import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
 import org.apache.rocketmq.client.impl.factory.MQClientInstance;
 import org.apache.rocketmq.client.log.ClientLogger;
 import org.apache.rocketmq.common.ServiceThread;
-import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.common.utils.ThreadUtils;
+import org.apache.rocketmq.logging.InternalLogger;
 
+import java.util.concurrent.*;
+
+/**
+ * 拉取消息线程
+ * 1）DefaultMQPushConsumerImpl.start函数调用PullMessageService.start,开启PullMessageService线程
+ * 该线程从pullRequestQueue中take PullRequest，如果去到则调用mQClientFactory去pullMsg
+ * 2）立即拉取消息方法，向pullRequestQueue队列中加入PullRequest，(1)取出，并调用pullMsg
+ * 负载均衡后，会调用RebalancePushImpl.dispatchPullRequest方法，其中会调用defaultMQPushConsumerImpl.executePullRequestImmediately(pullRequest);
+ * 开始第一次拉取消息，如果拉取到了，defaultMQPushConsumerImpl.pullMessage会继续拉取消息，或者根据流控延迟拉取消息，调用本类方法
+ * 3）延迟拉取消息
+ */
 public class PullMessageService extends ServiceThread {
     private final InternalLogger log = ClientLogger.getLog();
     private final LinkedBlockingQueue<PullRequest> pullRequestQueue = new LinkedBlockingQueue<PullRequest>();
     private final MQClientInstance mQClientFactory;
     private final ScheduledExecutorService scheduledExecutorService = Executors
-        .newSingleThreadScheduledExecutor(new ThreadFactory() {
-            @Override
-            public Thread newThread(Runnable r) {
-                return new Thread(r, "PullMessageServiceScheduledThread");
-            }
-        });
+            .newSingleThreadScheduledExecutor(new ThreadFactory() {
+                @Override
+                public Thread newThread(Runnable r) {
+                    return new Thread(r, "PullMessageServiceScheduledThread");
+                }
+            });
 
     public PullMessageService(MQClientInstance mQClientFactory) {
         this.mQClientFactory = mQClientFactory;
