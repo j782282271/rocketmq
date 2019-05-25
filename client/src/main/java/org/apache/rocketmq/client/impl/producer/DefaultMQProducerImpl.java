@@ -473,12 +473,9 @@ public class DefaultMQProducerImpl implements MQProducerInner {
     /**
      * 带重试发消息
      */
-    private SendResult sendDefaultImpl(
-            Message msg,
-            final CommunicationMode communicationMode,
-            final SendCallback sendCallback,
-            final long timeout
-    ) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+    private SendResult sendDefaultImpl(Message msg, final CommunicationMode communicationMode,
+                                       final SendCallback sendCallback, final long timeout)
+            throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         this.makeSureStateOK();
         Validators.checkMessage(msg, this.defaultMQProducer);
 
@@ -588,10 +585,8 @@ public class DefaultMQProducerImpl implements MQProducerInner {
 
             //格式化异常信息，抛出异常
             String info = String.format("Send [%d] times, still failed, cost [%d]ms, Topic: %s, BrokersSent: %s",
-                    times,
-                    System.currentTimeMillis() - beginTimestampFirst,
-                    msg.getTopic(),
-                    Arrays.toString(brokersSent));
+                    times, System.currentTimeMillis() - beginTimestampFirst,
+                    msg.getTopic(), Arrays.toString(brokersSent));
 
             info += FAQUrl.suggestTodo(FAQUrl.SEND_MSG_FAILED);
 
@@ -653,12 +648,10 @@ public class DefaultMQProducerImpl implements MQProducerInner {
      * 创建发送消息底层方法需要的参数：requestHeader
      * 根据同步、异步不同，执行不同的底层函数
      */
-    private SendResult sendKernelImpl(final Message msg,
-                                      final MessageQueue mq,
-                                      final CommunicationMode communicationMode,
-                                      final SendCallback sendCallback,
-                                      final TopicPublishInfo topicPublishInfo,
-                                      final long timeout) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+    private SendResult sendKernelImpl(final Message msg, final MessageQueue mq,
+                                      final CommunicationMode communicationMode, final SendCallback sendCallback,
+                                      final TopicPublishInfo topicPublishInfo, final long timeout)
+            throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         long beginStartTime = System.currentTimeMillis();
         String brokerAddr = this.mQClientFactory.findBrokerAddressInPublish(mq.getBrokerName());
         if (null == brokerAddr) {
@@ -765,18 +758,11 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                             throw new RemotingTooMuchRequestException("sendKernelImpl call timeout");
                         }
                         sendResult = this.mQClientFactory.getMQClientAPIImpl().sendMessage(
-                                brokerAddr,
-                                mq.getBrokerName(),
-                                tmpMessage,
-                                requestHeader,
-                                timeout - costTimeAsync,
-                                communicationMode,
-                                sendCallback,
-                                topicPublishInfo,
-                                this.mQClientFactory,
-                                this.defaultMQProducer.getRetryTimesWhenSendAsyncFailed(),
-                                context,
-                                this);
+                                brokerAddr, mq.getBrokerName(), tmpMessage,
+                                requestHeader, timeout - costTimeAsync,
+                                communicationMode, sendCallback, topicPublishInfo,
+                                this.mQClientFactory, this.defaultMQProducer.getRetryTimesWhenSendAsyncFailed(),
+                                context, this);
                         break;
                     case ONEWAY:
                     case SYNC:
@@ -785,14 +771,8 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                             throw new RemotingTooMuchRequestException("sendKernelImpl call timeout");
                         }
                         sendResult = this.mQClientFactory.getMQClientAPIImpl().sendMessage(
-                                brokerAddr,
-                                mq.getBrokerName(),
-                                msg,
-                                requestHeader,
-                                timeout - costTimeSync,
-                                communicationMode,
-                                context,
-                                this);
+                                brokerAddr, mq.getBrokerName(), msg, requestHeader,
+                                timeout - costTimeSync, communicationMode, context, this);
                         break;
                     default:
                         assert false;

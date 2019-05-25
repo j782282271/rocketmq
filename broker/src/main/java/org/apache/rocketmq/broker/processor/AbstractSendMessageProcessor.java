@@ -52,23 +52,32 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
+/**
+ * 1存储sendMessageHookList
+ * 2构建sendMessageHookList方法参数SendMessageContext
+ */
 public abstract class AbstractSendMessageProcessor implements NettyRequestProcessor {
     protected static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
 
     protected final static int DLQ_NUMS_PER_GROUP = 1;
     protected final BrokerController brokerController;
     protected final Random random = new Random(System.currentTimeMillis());
+    /**
+     * nettyServer的ip port
+     */
     protected final SocketAddress storeHost;
     private List<SendMessageHook> sendMessageHookList;
 
     public AbstractSendMessageProcessor(final BrokerController brokerController) {
         this.brokerController = brokerController;
-        this.storeHost =
-                new InetSocketAddress(brokerController.getBrokerConfig().getBrokerIP1(), brokerController
-                        .getNettyServerConfig().getListenPort());
+        this.storeHost = new InetSocketAddress(brokerController.getBrokerConfig().getBrokerIP1(),
+                brokerController.getNettyServerConfig().getListenPort());
     }
 
-    //用于hook调用
+    /**
+     * 创建SendMessageContext，用于hook调用
+     * requestHeader.properties放入broker端的的regionId、isTraceOn等信息
+     */
     protected SendMessageContext buildMsgContext(ChannelHandlerContext ctx, SendMessageRequestHeader requestHeader) {
         if (!this.hasSendMessageHook()) {
             return null;
@@ -82,12 +91,16 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
         mqtraceContext.setBrokerRegionId(this.brokerController.getBrokerConfig().getRegionId());
         mqtraceContext.setBornTimeStamp(requestHeader.getBornTimestamp());
 
+        /**
+         * 用requestHeader中的String型properties值创建requestHeader中的map property值，存入broker
+         * 的regionId、isTraceOn到map中，再变为String，存入requestHeader中
+         */
         Map<String, String> properties = MessageDecoder.string2messageProperties(requestHeader.getProperties());
-        String uniqueKey = properties.get(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX);
         properties.put(MessageConst.PROPERTY_MSG_REGION, this.brokerController.getBrokerConfig().getRegionId());
         properties.put(MessageConst.PROPERTY_TRACE_SWITCH, String.valueOf(this.brokerController.getBrokerConfig().isTraceOn()));
         requestHeader.setProperties(MessageDecoder.messageProperties2String(properties));
 
+        String uniqueKey = properties.get(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX);
         if (uniqueKey == null) {
             uniqueKey = "";
         }
@@ -99,14 +112,18 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
         return sendMessageHookList != null && !this.sendMessageHookList.isEmpty();
     }
 
-    protected MessageExtBrokerInner buildInnerMsg(final ChannelHandlerContext ctx,
-                                                  final SendMessageRequestHeader requestHeader, final byte[] body, TopicConfig topicConfig) {
+    /**
+     * 由requestHeader创建MessageExtBrokerInner
+     */
+    protected MessageExtBrokerInner buildInnerMsg(final ChannelHandlerContext ctx, final SendMessageRequestHeader requestHeader,
+                                                  final byte[] body, TopicConfig topicConfig) {
         int queueIdInt = requestHeader.getQueueId();
-        if (queueIdInt < 0) {
+        if (queueIdInt < 0) {//没指定队列，则随机选择一个队列
             queueIdInt = Math.abs(this.random.nextInt() % 99999999) % topicConfig.getWriteQueueNums();
         }
         int sysFlag = requestHeader.getSysFlag();
 
+        //TopicConfig如果设置为MULTI_TAG，则将sysFlag中的muti_tag位设置为1
         if (TopicFilterType.MULTI_TAG == topicConfig.getTopicFilterType()) {
             sysFlag |= MessageSysFlag.MULTI_TAGS_FLAG;
         }
@@ -126,8 +143,7 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
         msgInner.setBornTimestamp(requestHeader.getBornTimestamp());
         msgInner.setBornHost(ctx.channel().remoteAddress());
         msgInner.setStoreHost(this.getStoreHost());
-        msgInner.setReconsumeTimes(requestHeader.getReconsumeTimes() == null ? 0 : requestHeader
-                .getReconsumeTimes());
+        msgInner.setReconsumeTimes(requestHeader.getReconsumeTimes() == null ? 0 : requestHeader.getReconsumeTimes());
         return msgInner;
     }
 
@@ -135,9 +151,8 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
         return storeHost;
     }
 
-    protected RemotingCommand msgContentCheck(final ChannelHandlerContext ctx,
-                                              final SendMessageRequestHeader requestHeader, RemotingCommand request,
-                                              final RemotingCommand response) {
+    protected RemotingCommand msgContentCheck(final ChannelHandlerContext ctx, final SendMessageRequestHeader requestHeader,
+                                              RemotingCommand request, final RemotingCommand response) {
         if (requestHeader.getTopic().length() > Byte.MAX_VALUE) {
             log.warn("putMessage message topic length too long {}", requestHeader.getTopic().length());
             response.setCode(ResponseCode.MESSAGE_ILLEGAL);
@@ -178,6 +193,7 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
         TopicConfig topicConfig =
                 this.brokerController.getTopicConfigManager().selectTopicConfig(requestHeader.getTopic());
         if (null == topicConfig) {
+            //没有topic说明是第一次发该topic消息，可能需要自动创建topic
             int topicSysFlag = 0;
             if (requestHeader.isUnitMode()) {
                 if (requestHeader.getTopic().startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
@@ -189,8 +205,7 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
 
             log.warn("the topic {} not exist, producer: {}", requestHeader.getTopic(), ctx.channel().remoteAddress());
             topicConfig = this.brokerController.getTopicConfigManager().createTopicInSendMessageMethod(
-                    requestHeader.getTopic(),
-                    requestHeader.getDefaultTopic(),
+                    requestHeader.getTopic(), requestHeader.getDefaultTopic(),
                     RemotingHelper.parseChannelRemoteAddr(ctx.channel()),
                     requestHeader.getDefaultTopicQueueNums(), topicSysFlag);
 
@@ -215,14 +230,11 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
         int idValid = Math.max(topicConfig.getWriteQueueNums(), topicConfig.getReadQueueNums());
         if (queueIdInt >= idValid) {
             String errorInfo = String.format("request queueId[%d] is illegal, %s Producer: %s",
-                    queueIdInt,
-                    topicConfig.toString(),
-                    RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
+                    queueIdInt, topicConfig.toString(), RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
 
             log.warn(errorInfo);
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark(errorInfo);
-
             return response;
         }
         return response;
@@ -281,13 +293,11 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
         switch (request.getCode()) {
             case RequestCode.SEND_BATCH_MESSAGE:
             case RequestCode.SEND_MESSAGE_V2:
-                requestHeaderV2 =
-                        (SendMessageRequestHeaderV2) request
+                requestHeaderV2 = (SendMessageRequestHeaderV2) request
                                 .decodeCommandCustomHeader(SendMessageRequestHeaderV2.class);
             case RequestCode.SEND_MESSAGE:
                 if (null == requestHeaderV2) {
-                    requestHeader =
-                            (SendMessageRequestHeader) request
+                    requestHeader = (SendMessageRequestHeader) request
                                     .decodeCommandCustomHeader(SendMessageRequestHeader.class);
                 } else {
                     requestHeader = SendMessageRequestHeaderV2.createSendMessageRequestHeaderV1(requestHeaderV2);
