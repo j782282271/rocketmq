@@ -152,12 +152,13 @@ public class TopicConfigManager extends ConfigManager {
     }
 
     /**
-     * 发消息的时候如果没有该topic配置则创建该topic
+     * 发消息的时候如果没有该topic配置则创建该TopicConfig，并将其放入本类的map中topicConfigTable，将本broker的topic情况（topicConfigTable）发送给nameServ
+     * 如果本broker不允许自动创建topic，则返回null
      * topic待创建的topic、defaultTopic（AUTO_CREATE_TOPIC_KEY）默认topic
      * remoteAddress：producer的addr，clientDefaultTopicQueueNums：client端指定的默认队列数量
      * 如果broker允许自动创建topic，则用默认topic创建topic，队列数量取produce和默认队列的写队列数最小值
-     * 将本broker的topic情况发送给nameServ
      * topicSysFlag见TopicSysFlag类
+     * AbstractSendMessageProcessor.msgCheck调用本消息
      */
     public TopicConfig createTopicInSendMessageMethod(final String topic, final String defaultTopic,
                                                       final String remoteAddress, final int clientDefaultTopicQueueNums,
@@ -226,19 +227,20 @@ public class TopicConfigManager extends ConfigManager {
             //将本broker的所有topic信息发送到nameServ
             this.brokerController.registerBrokerAll(false, true, true);
         }
-
         return topicConfig;
     }
 
+    /**
+     * AbstractSendMessageProcessor.msgCheck调用本方法
+     * 如果本broker不允许自动创建topic，且topic为重试topic，则AbstractSendMessageProcessor.msgCheck创建重试topicConfig
+     * 队列数量clientDefaultTopicQueueNums固定等于1，perm为读写
+     */
     public TopicConfig createTopicInSendMessageBackMethod(
-            final String topic,
-            final int clientDefaultTopicQueueNums,
-            final int perm,
-            final int topicSysFlag) {
+            final String topic, final int clientDefaultTopicQueueNums,
+            final int perm, final int topicSysFlag) {
         TopicConfig topicConfig = this.topicConfigTable.get(topic);
         if (topicConfig != null)
             return topicConfig;
-
         boolean createNew = false;
 
         try {
@@ -317,6 +319,9 @@ public class TopicConfigManager extends ConfigManager {
         }
     }
 
+    /**
+     * admin调用本方法
+     */
     public void updateTopicConfig(final TopicConfig topicConfig) {
         TopicConfig old = this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         if (old != null) {
@@ -330,8 +335,10 @@ public class TopicConfigManager extends ConfigManager {
         this.persist();
     }
 
+    /**
+     * orderKVTableFromNs中的key为topic，将这些topic更新为order，将不在这些topic集合中的topic更新为非order
+     */
     public void updateOrderTopicConfig(final KVTable orderKVTableFromNs) {
-
         if (orderKVTableFromNs != null && orderKVTableFromNs.getTable() != null) {
             boolean isChange = false;
             Set<String> orderTopics = orderKVTableFromNs.getTable().keySet();
