@@ -149,6 +149,9 @@ public abstract class RebalanceImpl {
      * lock、unlock方法仅对order消费有用，作用：标记processqueue，并通知broker将某个mq锁定为本consumer消费，
      * 不让其他consumer消费，只有本consumer unlock后，其他consumer才有机会获取锁，一种同步，
      * 防止在某一瞬间，order消费，并发存在两个consumer同时消费同一个mq，非顺序消费允许某loadbalance的某一瞬间存在两个consumer同时消费同一mq
+     * ConsumeMessageOrderltService.ConsumeRequest.run方法中会检查pq是否已锁定，如果锁定才会消费，也就是说，此处向broker发起laock请求失败后
+     * 是无法消费该pq的消息的
+     * ConsumeMessageOrderlyService.lockMQPeriodically会定时调用本方法，加锁，维持本consumer对本pq的占有情况
      */
     public boolean lock(final MessageQueue mq) {
         FindBrokerResult findBrokerResult = this.mQClientFactory.findBrokerAddressInSubscribe(mq.getBrokerName(), MixAll.MASTER_ID, true);
@@ -180,6 +183,7 @@ public abstract class RebalanceImpl {
 
     /**
      * 调用broker lock所有mq，并且在对应的processQueue中设置已lock或者未lock
+     * ConsumeMessageOrderlyService.lockMQPeriodically会定时调用本方法，加锁，维持本consumer对本pq的占有情况
      */
     public void lockAll() {
         HashMap<String, Set<MessageQueue>> brokerMqs = this.buildProcessQueueTableByBrokerName();

@@ -47,6 +47,8 @@ public class ProcessQueue {
     private final Lock lockConsume = new ReentrantLock();
     /**
      * A subset of msgTreeMap, will only be used when orderly consume
+     * 对于顺序消费msgTreeMap存储的是总量消息，那些即将被listener的消息会调用takeMessags方法
+     * 被转移到consumingMsgOrderlyTreeMap中，然后才被消费
      */
     private final TreeMap<Long, MessageExt> consumingMsgOrderlyTreeMap = new TreeMap<Long, MessageExt>();
     private final AtomicLong tryUnlockTimes = new AtomicLong(0);
@@ -62,6 +64,10 @@ public class ProcessQueue {
     private volatile boolean consuming = false;
     private volatile long msgAccCnt = 0;
 
+    /**
+     * RebalanceImpl.lock方法调用this.lock之后会调用this.setLastLockTimestamp方法，记录加锁的时间
+     * 本方法判断是否锁过时了
+     */
     public boolean isLockExpired() {
         return (System.currentTimeMillis() - this.lastLockTimestamp) > REBALANCE_LOCK_MAX_LIVE_TIME;
     }
@@ -261,6 +267,11 @@ public class ProcessQueue {
         return locked;
     }
 
+    /**
+     * RebalanceImpl.lock方法会调用本方法，
+     * 调用本方法锁定该pq为本consumer消费
+     * 同时调用
+     */
     public void setLocked(boolean locked) {
         this.locked = locked;
     }
@@ -286,7 +297,7 @@ public class ProcessQueue {
      * 提交之后：
      * 减去consumingMsgOrderlyTreeMap中的消息数量
      * 减去consumingMsgOrderlyTreeMap中的消息占用空间大小
-     * 清除减去consumingMsgOrderlyTreeMap
+     * 清空consumingMsgOrderlyTreeMap
      * 返回offset：consumingMsgOrderlyTreeMap.lastKey()+1
      */
     public long commit() {
