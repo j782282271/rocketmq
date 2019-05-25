@@ -342,7 +342,6 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
     }
 
     private void submitConsumeRequestLater(final List<MessageExt> msgs, final ProcessQueue processQueue, final MessageQueue messageQueue) {
-
         this.scheduledExecutorService.schedule(new Runnable() {
 
             @Override
@@ -352,9 +351,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
         }, 5000, TimeUnit.MILLISECONDS);
     }
 
-    private void submitConsumeRequestLater(final ConsumeRequest consumeRequest
-    ) {
-
+    private void submitConsumeRequestLater(final ConsumeRequest consumeRequest) {
         this.scheduledExecutorService.schedule(new Runnable() {
 
             @Override

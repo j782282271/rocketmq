@@ -53,6 +53,9 @@ public class ProcessQueue {
     private volatile long queueOffsetMax = 0L;
     private volatile boolean dropped = false;
     private volatile long lastPullTimestamp = System.currentTimeMillis();
+    /**
+     * 最后消费时间记录，在消费完消息后调用removeMessage，在removeMessage中记录该时间
+     */
     private volatile long lastConsumeTimestamp = System.currentTimeMillis();
     private volatile boolean locked = false;
     private volatile long lastLockTimestamp = System.currentTimeMillis();
@@ -68,6 +71,9 @@ public class ProcessQueue {
     }
 
     /**
+     * 定时清理消费超时的消息，发回给broker，消费失败的消息在ConsumeMessageConcurrentlyService.processConsumeResult中
+     * 直接发回broker
+     *
      * @param pushConsumer
      */
     public void cleanExpiredMsg(DefaultMQPushConsumer pushConsumer) {
@@ -81,10 +87,11 @@ public class ProcessQueue {
             try {
                 this.lockTreeMap.readLock().lockInterruptibly();
                 try {
+                    //取出第一条消息的开始消费时间，改时间在ConsumeRequest中listener消费之前记录该值
+                    //如果开始消费时间到现在超过15min(默认)则说明超时了
                     if (!msgTreeMap.isEmpty() && System.currentTimeMillis() - Long.parseLong(MessageAccessor.getConsumeStartTimeStamp(msgTreeMap.firstEntry().getValue())) > pushConsumer.getConsumeTimeout() * 60 * 1000) {
                         msg = msgTreeMap.firstEntry().getValue();
                     } else {
-
                         break;
                     }
                 } finally {
@@ -96,11 +103,13 @@ public class ProcessQueue {
 
             try {
 
+                //超时消息发回给broker
                 pushConsumer.sendMessageBack(msg, 3);
                 log.info("send expire msg back. topic={}, msgId={}, storeHost={}, queueId={}, queueOffset={}", msg.getTopic(), msg.getMsgId(), msg.getStoreHost(), msg.getQueueId(), msg.getQueueOffset());
                 try {
                     this.lockTreeMap.writeLock().lockInterruptibly();
                     try {
+                        //如果当前消息为第一条消息，且消费的offset正为当前的offset则删除消息
                         if (!msgTreeMap.isEmpty() && msg.getQueueOffset() == msgTreeMap.firstKey()) {
                             try {
                                 removeMessage(Collections.singletonList(msg));
@@ -120,6 +129,12 @@ public class ProcessQueue {
         }
     }
 
+    /**
+     * DefaultMQPushConsumerImpl.pullMessage拉取到消息后放入pq中
+     * 向treemap中增加消息，增加msgSize、msgSize、queueOffsetMax
+     * 如果consuming==false，将consuming变为true，告知可消费
+     * 记录broker端积压的最大消息量
+     */
     public boolean putMessage(final List<MessageExt> msgs) {
         boolean dispatchToConsume = false;
         try {
@@ -141,6 +156,7 @@ public class ProcessQueue {
                     this.consuming = true;
                 }
 
+                //最大消息offset减去当前消息的offset，记录到msgAccCnt中，代表broker端挤压的最大消息量
                 if (!msgs.isEmpty()) {
                     MessageExt messageExt = msgs.get(msgs.size() - 1);
                     String property = messageExt.getProperty(MessageConst.PROPERTY_MAX_OFFSET);
@@ -161,6 +177,9 @@ public class ProcessQueue {
         return dispatchToConsume;
     }
 
+    /**
+     * 最后一个消息减去第一个消息的跨度
+     */
     public long getMaxSpan() {
         try {
             this.lockTreeMap.readLock().lockInterruptibly();
@@ -179,6 +198,7 @@ public class ProcessQueue {
     }
 
     /**
+     * 消费完消息后调用，清除消息
      * 加写锁，从treemap中删除msgs
      * 记录lastConsumeTimestamp为now
      * 按照msgs中的顺序删除消息
@@ -245,6 +265,9 @@ public class ProcessQueue {
         this.locked = locked;
     }
 
+    /**
+     * 将consumingMsgOrderlyTreeMap消息转移到msgTreeMap中
+     */
     public void rollback() {
         try {
             this.lockTreeMap.writeLock().lockInterruptibly();
@@ -259,6 +282,13 @@ public class ProcessQueue {
         }
     }
 
+    /**
+     * 提交之后：
+     * 减去consumingMsgOrderlyTreeMap中的消息数量
+     * 减去consumingMsgOrderlyTreeMap中的消息占用空间大小
+     * 清除减去consumingMsgOrderlyTreeMap
+     * 返回offset：consumingMsgOrderlyTreeMap.lastKey()+1
+     */
     public long commit() {
         try {
             this.lockTreeMap.writeLock().lockInterruptibly();
@@ -282,6 +312,9 @@ public class ProcessQueue {
         return -1;
     }
 
+    /**
+     * 将msgs中的消息从consumingMsgOrderlyTreeMap转移到msgTreeMap
+     */
     public void makeMessageToCosumeAgain(List<MessageExt> msgs) {
         try {
             this.lockTreeMap.writeLock().lockInterruptibly();
@@ -298,6 +331,9 @@ public class ProcessQueue {
         }
     }
 
+    /**
+     * 从msgTreeMap转移前batchSize个消息到consumingMsgOrderlyTreeMap中
+     */
     public List<MessageExt> takeMessags(final int batchSize) {
         List<MessageExt> result = new ArrayList<MessageExt>(batchSize);
         final long now = System.currentTimeMillis();
@@ -330,6 +366,9 @@ public class ProcessQueue {
         return result;
     }
 
+    /**
+     * msgTreeMap中有消息则认为有临时消息
+     */
     public boolean hasTempMessage() {
         try {
             this.lockTreeMap.readLock().lockInterruptibly();
