@@ -797,10 +797,8 @@ public class BrokerController {
         }
 
         if (forceRegister || needRegister(this.brokerConfig.getBrokerClusterName(),
-                this.getBrokerAddr(),
-                this.brokerConfig.getBrokerName(),
-                this.brokerConfig.getBrokerId(),
-                this.brokerConfig.getRegisterBrokerTimeoutMills())) {
+                this.getBrokerAddr(), this.brokerConfig.getBrokerName(),
+                this.brokerConfig.getBrokerId(), this.brokerConfig.getRegisterBrokerTimeoutMills())) {
             doRegisterBrokerAll(checkOrderConfig, oneway, topicConfigWrapper);
         }
     }
@@ -808,16 +806,10 @@ public class BrokerController {
     private void doRegisterBrokerAll(boolean checkOrderConfig, boolean oneway,
                                      TopicConfigSerializeWrapper topicConfigWrapper) {
         List<RegisterBrokerResult> registerBrokerResultList = this.brokerOuterAPI.registerBrokerAll(
-                this.brokerConfig.getBrokerClusterName(),
-                this.getBrokerAddr(),
-                this.brokerConfig.getBrokerName(),
-                this.brokerConfig.getBrokerId(),
-                this.getHAServerAddr(),
-                topicConfigWrapper,
-                this.filterServerManager.buildNewFilterServerList(),
-                oneway,
-                this.brokerConfig.getRegisterBrokerTimeoutMills(),
-                this.brokerConfig.isCompressedRegister());
+                this.brokerConfig.getBrokerClusterName(), this.getBrokerAddr(),
+                this.brokerConfig.getBrokerName(), this.brokerConfig.getBrokerId(),
+                this.getHAServerAddr(), topicConfigWrapper, this.filterServerManager.buildNewFilterServerList(),
+                oneway, this.brokerConfig.getRegisterBrokerTimeoutMills(), this.brokerConfig.isCompressedRegister());
 
         if (registerBrokerResultList.size() > 0) {
             RegisterBrokerResult registerBrokerResult = registerBrokerResultList.get(0);
