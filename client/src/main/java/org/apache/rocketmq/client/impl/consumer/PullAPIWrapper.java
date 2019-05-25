@@ -202,12 +202,8 @@ public class PullAPIWrapper {
                 brokerAddr = computPullFromWhichFilterServer(mq.getTopic(), brokerAddr);
             }
 
-            PullResult pullResult = this.mQClientFactory.getMQClientAPIImpl().pullMessage(
-                    brokerAddr,
-                    requestHeader,
-                    timeoutMillis,
-                    communicationMode,
-                    pullCallback);
+            PullResult pullResult = this.mQClientFactory.getMQClientAPIImpl().pullMessage(brokerAddr, requestHeader,
+                    timeoutMillis, communicationMode, pullCallback);
 
             return pullResult;
         }
@@ -215,32 +211,16 @@ public class PullAPIWrapper {
         throw new MQClientException("The broker[" + mq.getBrokerName() + "] not exist", null);
     }
 
-    public PullResult pullKernelImpl(
-            final MessageQueue mq,
-            final String subExpression,
-            final long subVersion,
-            final long offset,
-            final int maxNums,
-            final int sysFlag,
-            final long commitOffset,
-            final long brokerSuspendMaxTimeMillis,
-            final long timeoutMillis,
-            final CommunicationMode communicationMode,
-            final PullCallback pullCallback
-    ) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
-        return pullKernelImpl(
-                mq,
-                subExpression,
-                ExpressionType.TAG,
-                subVersion, offset,
-                maxNums,
-                sysFlag,
-                commitOffset,
-                brokerSuspendMaxTimeMillis,
-                timeoutMillis,
-                communicationMode,
-                pullCallback
-        );
+    public PullResult pullKernelImpl(final MessageQueue mq, final String subExpression,
+                                     final long subVersion, final long offset,
+                                     final int maxNums, final int sysFlag,
+                                     final long commitOffset, final long brokerSuspendMaxTimeMillis,
+                                     final long timeoutMillis, final CommunicationMode communicationMode,
+                                     final PullCallback pullCallback)
+            throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+        return pullKernelImpl(mq, subExpression, ExpressionType.TAG, subVersion, offset,
+                maxNums, sysFlag, commitOffset, brokerSuspendMaxTimeMillis,
+                timeoutMillis, communicationMode, pullCallback);
     }
 
     /**

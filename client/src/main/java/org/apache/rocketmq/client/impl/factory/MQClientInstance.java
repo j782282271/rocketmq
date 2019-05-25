@@ -1200,7 +1200,7 @@ public class MQClientInstance {
             }
         } finally {
             if (consumer != null) {
-                //重新开始消费
+                //重新开始消费，重新负载均衡
                 consumer.resume();
             }
         }
