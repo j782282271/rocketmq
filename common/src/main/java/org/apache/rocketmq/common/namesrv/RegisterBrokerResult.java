@@ -20,7 +20,9 @@ package org.apache.rocketmq.common.namesrv;
 import org.apache.rocketmq.common.protocol.body.KVTable;
 
 public class RegisterBrokerResult {
+    //本broker的高可用server地址，如果自己为master则该addr为slave，如果自己为slave则该值为masterAddr
     private String haServerAddr;
+    //本broker的masterAddr，有可能为自己
     private String masterAddr;
     private KVTable kvTable;
 

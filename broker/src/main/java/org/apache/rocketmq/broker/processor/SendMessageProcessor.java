@@ -45,6 +45,16 @@ import java.net.SocketAddress;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * RequestCode.SEND_MESSAGE
+ * RequestCode.SEND_MESSAGE_V2
+ * RequestCode.SEND_BATCH_MESSAGE
+ * RequestCode.CONSUMER_SEND_MSG_BACK
+ * RequestCode.SEND_MESSAGE
+ * RequestCode.SEND_MESSAGE_V2
+ * RequestCode.SEND_BATCH_MESSAGE
+ * RequestCode.CONSUMER_SEND_MSG_BACK
+ */
 public class SendMessageProcessor extends AbstractSendMessageProcessor implements NettyRequestProcessor {
 
     //consumer sendBack 调用此hook
@@ -88,6 +98,14 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 this.brokerController.getMessageStore().isTransientStorePoolDeficient();
     }
 
+    /**
+     * 1executeConsumeMessageHookAfter
+     * 2获取订阅信息
+     * 3读写权限、重试队列数判断、队列id
+     * 4topicConfig、是否topic有可写权限
+     * 5根据offset从commitLog中读取出MessageExt
+     * 6用MessageExt创建MessageExtBrokerInner，保存到msgStore中
+     */
     private RemotingCommand consumerSendMsgBack(final ChannelHandlerContext ctx, final RemotingCommand request)
             throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
@@ -95,7 +113,6 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 (ConsumerSendMsgBackRequestHeader) request.decodeCommandCustomHeader(ConsumerSendMsgBackRequestHeader.class);
 
         if (this.hasConsumeMessageHook() && !UtilAll.isBlank(requestHeader.getOriginMsgId())) {
-
             ConsumeMessageContext context = new ConsumeMessageContext();
             context.setConsumerGroup(requestHeader.getGroup());
             context.setTopic(requestHeader.getOriginTopic());
@@ -150,6 +167,9 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             return response;
         }
 
+        /**
+         * 读取出原消息
+         */
         MessageExt msgExt = this.brokerController.getMessageStore().lookMessageByOffset(requestHeader.getOffset());
         if (null == msgExt) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
@@ -161,24 +181,24 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         if (null == retryTopic) {
             MessageAccessor.putProperty(msgExt, MessageConst.PROPERTY_RETRY_TOPIC, msgExt.getTopic());
         }
+        //是否同步等待刷盘成功，异步刷盘
         msgExt.setWaitStoreMsgOK(false);
 
         int delayLevel = requestHeader.getDelayLevel();
 
+        //从订阅信息中取出最大次数
         int maxReconsumeTimes = subscriptionGroupConfig.getRetryMaxTimes();
         if (request.getVersion() >= MQVersion.Version.V3_4_9.ordinal()) {
+            //从请求头取最大消费次数
             maxReconsumeTimes = requestHeader.getMaxReconsumeTimes();
         }
 
-        if (msgExt.getReconsumeTimes() >= maxReconsumeTimes
-                || delayLevel < 0) {
+        if (msgExt.getReconsumeTimes() >= maxReconsumeTimes || delayLevel < 0) {
+            //重试次数超过指定次数，放入死信队列
             newTopic = MixAll.getDLQTopic(requestHeader.getGroup());
             queueIdInt = Math.abs(this.random.nextInt() % 99999999) % DLQ_NUMS_PER_GROUP;
-
             topicConfig = this.brokerController.getTopicConfigManager().createTopicInSendMessageBackMethod(newTopic,
-                    DLQ_NUMS_PER_GROUP,
-                    PermName.PERM_WRITE, 0
-            );
+                    DLQ_NUMS_PER_GROUP, PermName.PERM_WRITE, 0);
             if (null == topicConfig) {
                 response.setCode(ResponseCode.SYSTEM_ERROR);
                 response.setRemark("topic[" + newTopic + "] not exist");
@@ -188,7 +208,6 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             if (0 == delayLevel) {
                 delayLevel = 3 + msgExt.getReconsumeTimes();
             }
-
             msgExt.setDelayTimeLevel(delayLevel);
         }
 
@@ -207,6 +226,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         msgInner.setStoreHost(this.getStoreHost());
         msgInner.setReconsumeTimes(msgExt.getReconsumeTimes() + 1);
 
+        //originMsgId或者msgId赋值给msgInner的originMsgId
         String originMsgId = MessageAccessor.getOriginMessageId(msgExt);
         MessageAccessor.setOriginMessageId(msgInner, UtilAll.isBlank(originMsgId) ? msgExt.getMsgId() : originMsgId);
 
@@ -240,10 +260,14 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         return response;
     }
 
+    /**
+     * 重试超过指定次数放入死信队列
+     */
     private boolean handleRetryAndDLQ(SendMessageRequestHeader requestHeader, RemotingCommand response,
                                       RemotingCommand request, MessageExt msg, TopicConfig topicConfig) {
         String newTopic = requestHeader.getTopic();
         if (null != newTopic && newTopic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
+            //重试消息
             String groupName = newTopic.substring(MixAll.RETRY_GROUP_TOPIC_PREFIX.length());
             SubscriptionGroupConfig subscriptionGroupConfig =
                     this.brokerController.getSubscriptionGroupManager().findSubscriptionGroupConfig(groupName);
@@ -264,9 +288,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 newTopic = MixAll.getDLQTopic(groupName);
                 int queueIdInt = Math.abs(this.random.nextInt() % 99999999) % DLQ_NUMS_PER_GROUP;
                 topicConfig = this.brokerController.getTopicConfigManager().createTopicInSendMessageBackMethod(newTopic,
-                        DLQ_NUMS_PER_GROUP,
-                        PermName.PERM_WRITE, 0
-                );
+                        DLQ_NUMS_PER_GROUP, PermName.PERM_WRITE, 0);
                 msg.setTopic(newTopic);
                 msg.setQueueId(queueIdInt);
                 if (null == topicConfig) {
@@ -284,18 +306,20 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         return true;
     }
 
+    /**
+     * 1检查消息，不存在topic则创建topic
+     * 2将requestHeader转化为MessageExtBrokerInner
+     * 3区分事物消息，选择不同存储MessageExtBrokerInner
+     * 4解析put2Store的result，返回
+     */
     private RemotingCommand sendMessage(final ChannelHandlerContext ctx, final RemotingCommand request,
                                         final SendMessageContext sendMessageContext,
                                         final SendMessageRequestHeader requestHeader) throws RemotingCommandException {
-
         final RemotingCommand response = RemotingCommand.createResponseCommand(SendMessageResponseHeader.class);
         final SendMessageResponseHeader responseHeader = (SendMessageResponseHeader) response.readCustomHeader();
-
         response.setOpaque(request.getOpaque());
-
         response.addExtField(MessageConst.PROPERTY_MSG_REGION, this.brokerController.getBrokerConfig().getRegionId());
         response.addExtField(MessageConst.PROPERTY_TRACE_SWITCH, String.valueOf(this.brokerController.getBrokerConfig().isTraceOn()));
-
         log.debug("receive SendMessage request command, {}", request);
 
         final long startTimstamp = this.brokerController.getBrokerConfig().getStartAcceptSendRequestTimeStamp();
@@ -306,16 +330,15 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         }
 
         response.setCode(-1);
+        //检查消息和topic，如果没有则创建topic配置
         super.msgCheck(ctx, requestHeader, response);
         if (response.getCode() != -1) {
             return response;
         }
 
         final byte[] body = request.getBody();
-
         int queueIdInt = requestHeader.getQueueId();
         TopicConfig topicConfig = this.brokerController.getTopicConfigManager().selectTopicConfig(requestHeader.getTopic());
-
         if (queueIdInt < 0) {
             queueIdInt = Math.abs(this.random.nextInt() % 99999999) % topicConfig.getWriteQueueNums();
         }
@@ -351,9 +374,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         } else {
             putMessageResult = this.brokerController.getMessageStore().putMessage(msgInner);
         }
-
         return handlePutMessageResult(putMessageResult, response, request, msgInner, responseHeader, sendMessageContext, ctx, queueIdInt);
-
     }
 
     private RemotingCommand handlePutMessageResult(PutMessageResult putMessageResult, RemotingCommand response,
@@ -457,19 +478,14 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         return response;
     }
 
-    private RemotingCommand sendBatchMessage(final ChannelHandlerContext ctx,
-                                             final RemotingCommand request,
-                                             final SendMessageContext sendMessageContext,
-                                             final SendMessageRequestHeader requestHeader) throws RemotingCommandException {
-
+    private RemotingCommand sendBatchMessage(
+            final ChannelHandlerContext ctx, final RemotingCommand request,
+            final SendMessageContext sendMessageContext, final SendMessageRequestHeader requestHeader) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(SendMessageResponseHeader.class);
         final SendMessageResponseHeader responseHeader = (SendMessageResponseHeader) response.readCustomHeader();
-
         response.setOpaque(request.getOpaque());
-
         response.addExtField(MessageConst.PROPERTY_MSG_REGION, this.brokerController.getBrokerConfig().getRegionId());
         response.addExtField(MessageConst.PROPERTY_TRACE_SWITCH, String.valueOf(this.brokerController.getBrokerConfig().isTraceOn()));
-
         log.debug("Receive SendMessage request command {}", request);
 
         final long startTimstamp = this.brokerController.getBrokerConfig().getStartAcceptSendRequestTimeStamp();

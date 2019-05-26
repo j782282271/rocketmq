@@ -23,12 +23,21 @@ import org.apache.rocketmq.remoting.annotation.CFNullable;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 
 public class ConsumerSendMsgBackRequestHeader implements CommandCustomHeader {
+    /**
+     * commitLog的offset
+     */
     @CFNotNull
     private Long offset;
+    /**
+     * consumerGroup
+     */
     @CFNotNull
     private String group;
     @CFNotNull
     private Integer delayLevel;
+    /**
+     * 原msgID
+     */
     private String originMsgId;
     private String originTopic;
     @CFNullable
@@ -99,6 +108,6 @@ public class ConsumerSendMsgBackRequestHeader implements CommandCustomHeader {
     @Override
     public String toString() {
         return "ConsumerSendMsgBackRequestHeader [group=" + group + ", originTopic=" + originTopic + ", originMsgId=" + originMsgId
-            + ", delayLevel=" + delayLevel + ", unitMode=" + unitMode + ", maxReconsumeTimes=" + maxReconsumeTimes + "]";
+                + ", delayLevel=" + delayLevel + ", unitMode=" + unitMode + ", maxReconsumeTimes=" + maxReconsumeTimes + "]";
     }
 }

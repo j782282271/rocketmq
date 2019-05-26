@@ -39,6 +39,7 @@ public class FilterAPI {
 
     /**
      * subString 形式：tag1||tag2||tag3
+     * 以tag形式过滤，subString为tag集合，||分割
      */
     public static SubscriptionData buildSubscriptionData(final String consumerGroup, String topic, String subString) throws Exception {
         SubscriptionData subscriptionData = new SubscriptionData();

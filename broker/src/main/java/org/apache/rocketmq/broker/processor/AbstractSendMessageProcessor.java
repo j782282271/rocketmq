@@ -55,6 +55,7 @@ import java.util.Random;
 /**
  * 1存储sendMessageHookList
  * 2构建sendMessageHookList方法参数SendMessageContext
+ * 3msgCheck，检查消息，并且自动创建不存在的topic，然后通知nameServ，topic表变化
  */
 public abstract class AbstractSendMessageProcessor implements NettyRequestProcessor {
     protected static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
@@ -290,6 +291,9 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
         }
     }
 
+    /**
+     * 区分版本解析不同的header
+     */
     protected SendMessageRequestHeader parseRequestHeader(RemotingCommand request)
             throws RemotingCommandException {
 

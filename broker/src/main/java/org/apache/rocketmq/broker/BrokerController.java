@@ -781,9 +781,16 @@ public class BrokerController {
         doRegisterBrokerAll(true, false, topicConfigSerializeWrapper);
     }
 
+    /**
+     * broker向nameSer注册本topic配置表
+     * 每个topic的perm都为本broker的perm
+     */
     public synchronized void registerBrokerAll(final boolean checkOrderConfig, boolean oneway, boolean forceRegister) {
+        //将TopicConfigManager中的topic配置mp放入序列化类中
         TopicConfigSerializeWrapper topicConfigWrapper = this.getTopicConfigManager().buildTopicConfigSerializeWrapper();
 
+        //取出topicConfigWrapper中的topicConfigTable，遍历将TopicConfig的perm更新为本broker的perm
+        //放到topicConfigTable本地变量中，更新topicConfigWrapper中的配置map为topicConfigTable
         if (!PermName.isWriteable(this.getBrokerConfig().getBrokerPermission())
                 || !PermName.isReadable(this.getBrokerConfig().getBrokerPermission())) {
             ConcurrentHashMap<String, TopicConfig> topicConfigTable = new ConcurrentHashMap<String, TopicConfig>();
@@ -796,6 +803,7 @@ public class BrokerController {
             topicConfigWrapper.setTopicConfigTable(topicConfigTable);
         }
 
+        //强制向nameServ注册
         if (forceRegister || needRegister(this.brokerConfig.getBrokerClusterName(),
                 this.getBrokerAddr(), this.brokerConfig.getBrokerName(),
                 this.brokerConfig.getBrokerId(), this.brokerConfig.getRegisterBrokerTimeoutMills())) {
@@ -803,36 +811,44 @@ public class BrokerController {
         }
     }
 
+    /**
+     * 向所有nameServ注册自己的信息
+     * 获取注册结果，得到自己的masterAddr或者slaveAddr
+     */
     private void doRegisterBrokerAll(boolean checkOrderConfig, boolean oneway,
                                      TopicConfigSerializeWrapper topicConfigWrapper) {
+        //向nameSer注册自己
         List<RegisterBrokerResult> registerBrokerResultList = this.brokerOuterAPI.registerBrokerAll(
                 this.brokerConfig.getBrokerClusterName(), this.getBrokerAddr(),
                 this.brokerConfig.getBrokerName(), this.brokerConfig.getBrokerId(),
                 this.getHAServerAddr(), topicConfigWrapper, this.filterServerManager.buildNewFilterServerList(),
                 oneway, this.brokerConfig.getRegisterBrokerTimeoutMills(), this.brokerConfig.isCompressedRegister());
 
+        //注册结果
         if (registerBrokerResultList.size() > 0) {
             RegisterBrokerResult registerBrokerResult = registerBrokerResultList.get(0);
             if (registerBrokerResult != null) {
                 if (this.updateMasterHAServerAddrPeriodically && registerBrokerResult.getHaServerAddr() != null) {
+                    //如果本类为slave，则更新masterAddr
                     this.messageStore.updateHaMasterAddress(registerBrokerResult.getHaServerAddr());
                 }
 
+                //设置masterAddr
                 this.slaveSynchronize.setMasterAddr(registerBrokerResult.getMasterAddr());
 
                 if (checkOrderConfig) {
+                    //更新order topic信息
                     this.getTopicConfigManager().updateOrderTopicConfig(registerBrokerResult.getKvTable());
                 }
             }
         }
     }
 
-    private boolean needRegister(final String clusterName,
-                                 final String brokerAddr,
-                                 final String brokerName,
-                                 final long brokerId,
-                                 final int timeoutMills) {
-
+    /**
+     * 判断broker是否要向nameServ更新自己的信息
+     */
+    private boolean needRegister(final String clusterName, final String brokerAddr,
+                                 final String brokerName, final long brokerId, final int timeoutMills) {
         TopicConfigSerializeWrapper topicConfigWrapper = this.getTopicConfigManager().buildTopicConfigSerializeWrapper();
         List<Boolean> changeList = brokerOuterAPI.needRegister(clusterName, brokerAddr, brokerName, brokerId, topicConfigWrapper, timeoutMills);
         boolean needRegister = false;
