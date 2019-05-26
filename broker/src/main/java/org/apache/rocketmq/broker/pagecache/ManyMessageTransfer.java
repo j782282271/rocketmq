@@ -18,11 +18,12 @@ package org.apache.rocketmq.broker.pagecache;
 
 import io.netty.channel.FileRegion;
 import io.netty.util.AbstractReferenceCounted;
+import org.apache.rocketmq.store.GetMessageResult;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.WritableByteChannel;
 import java.util.List;
-import org.apache.rocketmq.store.GetMessageResult;
 
 public class ManyMessageTransfer extends AbstractReferenceCounted implements FileRegion {
     private final ByteBuffer byteBufferHeader;
@@ -58,6 +59,9 @@ public class ManyMessageTransfer extends AbstractReferenceCounted implements Fil
         return byteBufferHeader.limit() + this.getMessageResult.getBufferTotalSize();
     }
 
+    /**
+     * 先将byteBufferHeader转移到target中，再将getMessageResult转移到target中
+     */
     @Override
     public long transferTo(WritableByteChannel target, long position) throws IOException {
         if (this.byteBufferHeader.hasRemaining()) {
