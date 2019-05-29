@@ -152,8 +152,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         }
 
         TopicConfig topicConfig = this.brokerController.getTopicConfigManager().createTopicInSendMessageBackMethod(
-                newTopic,
-                subscriptionGroupConfig.getRetryQueueNums(),
+                newTopic, subscriptionGroupConfig.getRetryQueueNums(),
                 PermName.PERM_WRITE | PermName.PERM_READ, topicSysFlag);
         if (null == topicConfig) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
@@ -241,10 +240,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                     }
 
                     this.brokerController.getBrokerStatsManager().incSendBackNums(requestHeader.getGroup(), backTopic);
-
                     response.setCode(ResponseCode.SUCCESS);
                     response.setRemark(null);
-
                     return response;
                 default:
                     break;
@@ -359,15 +356,13 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         msgInner.setBornHost(ctx.channel().remoteAddress());
         msgInner.setStoreHost(this.getStoreHost());
         msgInner.setReconsumeTimes(requestHeader.getReconsumeTimes() == null ? 0 : requestHeader.getReconsumeTimes());
-        PutMessageResult putMessageResult = null;
+        PutMessageResult putMessageResult;
         Map<String, String> oriProps = MessageDecoder.string2messageProperties(requestHeader.getProperties());
         String traFlag = oriProps.get(MessageConst.PROPERTY_TRANSACTION_PREPARED);
         if (traFlag != null && Boolean.parseBoolean(traFlag)) {
             if (this.brokerController.getBrokerConfig().isRejectTransactionMessage()) {
                 response.setCode(ResponseCode.NO_PERMISSION);
-                response.setRemark(
-                        "the broker[" + this.brokerController.getBrokerConfig().getBrokerIP1()
-                                + "] sending transaction message is forbidden");
+                response.setRemark("the broker[" + this.brokerController.getBrokerConfig().getBrokerIP1() + "] sending transaction message is forbidden");
                 return response;
             }
             putMessageResult = this.brokerController.getTransactionalMessageService().prepareMessage(msgInner);
@@ -377,10 +372,14 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         return handlePutMessageResult(putMessageResult, response, request, msgInner, responseHeader, sendMessageContext, ctx, queueIdInt);
     }
 
+    /**
+     * 解析putMessageResult结果code，映射为返回结果code
+     * responseHeader中放入msgId、qId、qOffset
+     * 为SendMessageContext填充值
+     */
     private RemotingCommand handlePutMessageResult(PutMessageResult putMessageResult, RemotingCommand response,
-                                                   RemotingCommand request, MessageExt msg,
-                                                   SendMessageResponseHeader responseHeader, SendMessageContext sendMessageContext, ChannelHandlerContext ctx,
-                                                   int queueIdInt) {
+                                                   RemotingCommand request, MessageExt msg, SendMessageResponseHeader responseHeader,
+                                                   SendMessageContext sendMessageContext, ChannelHandlerContext ctx, int queueIdInt) {
         if (putMessageResult == null) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark("store putMessage return null");

@@ -25,6 +25,9 @@ import org.apache.rocketmq.remoting.annotation.CFNotNull;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 
 public class SendMessageResponseHeader implements CommandCustomHeader {
+    /**
+     * 该msgId会被producer解析放到SendResult的offsetMsgId字段
+     */
     @CFNotNull
     private String msgId;
     @CFNotNull

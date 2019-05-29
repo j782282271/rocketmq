@@ -22,7 +22,8 @@ import org.apache.rocketmq.common.message.MessageQueue;
 public class SendResult {
     private SendStatus sendStatus;
     /**
-     * 由client端自己计算出来的
+     * 由client端自己计算出来的，调用方法：MessageClientIDSetter.getUniqID(msg);得到id
+     * 放到此处
      */
     private String msgId;
     private MessageQueue messageQueue;

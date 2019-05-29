@@ -16,10 +16,6 @@
  */
 package org.apache.rocketmq.broker.latency;
 
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import org.apache.rocketmq.broker.BrokerController;
 import org.apache.rocketmq.common.ThreadFactoryImpl;
 import org.apache.rocketmq.common.constant.LoggerName;
@@ -28,14 +24,24 @@ import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.remoting.netty.RequestTask;
 import org.apache.rocketmq.remoting.protocol.RemotingSysResponseCode;
 
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
 /**
  * BrokerFastFailure will cover {@link BrokerController#sendThreadPoolQueue} and
  * {@link BrokerController#pullThreadPoolQueue}
+ * 快速失败线程，定时10ms执行一次任务
+ * 如果osPageCache busy则清除所有producer请求线程池中的任务，告知发送者请求超时
+ * 如果producer请求线程池中的任务，超过最大发送等待时间(broker设置)则告知超时
+ * 如果consumer请求线程池中的任务，超过最大消费等待时间(broker设置)则告知超时
+ * 如果心跳请求线程池中的任务，超过最大心跳等待时间(broker设置)则告知超时
  */
 public class BrokerFastFailure {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private final ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl(
-        "BrokerFastFailureScheduledThread"));
+            "BrokerFastFailureScheduledThread"));
     private final BrokerController brokerController;
 
     public BrokerFastFailure(final BrokerController brokerController) {
@@ -55,6 +61,9 @@ public class BrokerFastFailure {
         return null;
     }
 
+    /**
+     * 10millsecond检查一次
+     */
     public void start() {
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
@@ -85,13 +94,13 @@ public class BrokerFastFailure {
         }
 
         cleanExpiredRequestInQueue(this.brokerController.getSendThreadPoolQueue(),
-            this.brokerController.getBrokerConfig().getWaitTimeMillsInSendQueue());
+                this.brokerController.getBrokerConfig().getWaitTimeMillsInSendQueue());
 
         cleanExpiredRequestInQueue(this.brokerController.getPullThreadPoolQueue(),
-            this.brokerController.getBrokerConfig().getWaitTimeMillsInPullQueue());
+                this.brokerController.getBrokerConfig().getWaitTimeMillsInPullQueue());
 
         cleanExpiredRequestInQueue(this.brokerController.getHeartbeatThreadPoolQueue(),
-            this.brokerController.getBrokerConfig().getWaitTimeMillsInHeartbeatQueue());
+                this.brokerController.getBrokerConfig().getWaitTimeMillsInHeartbeatQueue());
     }
 
     void cleanExpiredRequestInQueue(final BlockingQueue<Runnable> blockingQueue, final long maxWaitTimeMillsInQueue) {

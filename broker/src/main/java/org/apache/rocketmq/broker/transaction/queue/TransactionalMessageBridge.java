@@ -64,6 +64,9 @@ public class TransactionalMessageBridge {
 
     }
 
+    /**
+     * 用这个consumerGroup:TransactionalMessageUtil.buildConsumerGroup()消费已commit的消息（topic为：RMQ_SYS_TRANS_OP_HALF_TOPIC）
+     */
     public long fetchConsumeOffset(MessageQueue mq) {
         //config/consumerOffset.json下面存，logicOffset
         long offset = brokerController.getConsumerOffsetManager().queryOffset(TransactionalMessageUtil.buildConsumerGroup(), mq.getTopic(), mq.getQueueId());
@@ -73,6 +76,9 @@ public class TransactionalMessageBridge {
         return offset;
     }
 
+    /**
+     * 按照topic的读队列数量new MessageQueue集合
+     */
     public Set<MessageQueue> fetchMessageQueues(String topic) {
         Set<MessageQueue> mqSet = new HashSet<>();
         TopicConfig topicConfig = selectTopicConfig(topic);
@@ -88,12 +94,18 @@ public class TransactionalMessageBridge {
         return mqSet;
     }
 
+    /**
+     * 更新TransactionalMessageUtil.buildConsumerGroup()的消费offset
+     */
     public void updateConsumeOffset(MessageQueue mq, long offset) {
         this.brokerController.getConsumerOffsetManager().commitOffset(
                 RemotingHelper.parseSocketAddressAddr(this.storeHost), TransactionalMessageUtil.buildConsumerGroup(), mq.getTopic(),
                 mq.getQueueId(), offset);
     }
 
+    /**
+     * 以该消费group:TransactionalMessageUtil.buildConsumerGroup()读取处于prepare状态的msg
+     */
     public PullResult getHalfMessage(int queueId, long offset, int nums) {
         String group = TransactionalMessageUtil.buildConsumerGroup();
         String topic = TransactionalMessageUtil.buildHalfTopic();
@@ -101,6 +113,9 @@ public class TransactionalMessageBridge {
         return getMessage(group, topic, queueId, offset, nums, sub);
     }
 
+    /**
+     * 以该消费group:TransactionalMessageUtil.buildConsumerGroup()读取处于commit状态的msg
+     */
     public PullResult getOpMessage(int queueId, long offset, int nums) {
         String group = TransactionalMessageUtil.buildConsumerGroup();
         String topic = TransactionalMessageUtil.buildOpTopic();
@@ -108,10 +123,11 @@ public class TransactionalMessageBridge {
         return getMessage(group, topic, queueId, offset, nums, sub);
     }
 
-    private PullResult getMessage(String group, String topic, int queueId, long offset, int nums,
-                                  SubscriptionData sub) {
+    /**
+     * 从store中读出消息并decode消息，将GetMessageResult转化为PullResult
+     */
+    private PullResult getMessage(String group, String topic, int queueId, long offset, int nums, SubscriptionData sub) {
         GetMessageResult getMessageResult = store.getMessage(group, topic, queueId, offset, nums, null);
-
         if (getMessageResult != null) {
             PullStatus pullStatus = PullStatus.NO_NEW_MSG;
             List<MessageExt> foundList = null;
@@ -119,24 +135,19 @@ public class TransactionalMessageBridge {
                 case FOUND:
                     pullStatus = PullStatus.FOUND;
                     foundList = decodeMsgList(getMessageResult);
-                    this.brokerController.getBrokerStatsManager().incGroupGetNums(group, topic,
-                            getMessageResult.getMessageCount());
-                    this.brokerController.getBrokerStatsManager().incGroupGetSize(group, topic,
-                            getMessageResult.getBufferTotalSize());
+                    this.brokerController.getBrokerStatsManager().incGroupGetNums(group, topic, getMessageResult.getMessageCount());
+                    this.brokerController.getBrokerStatsManager().incGroupGetSize(group, topic, getMessageResult.getBufferTotalSize());
                     this.brokerController.getBrokerStatsManager().incBrokerGetNums(getMessageResult.getMessageCount());
                     this.brokerController.getBrokerStatsManager().recordDiskFallBehindTime(group, topic, queueId,
-                            this.brokerController.getMessageStore().now() - foundList.get(foundList.size() - 1)
-                                    .getStoreTimestamp());
+                            this.brokerController.getMessageStore().now() - foundList.get(foundList.size() - 1).getStoreTimestamp());
                     break;
                 case NO_MATCHED_MESSAGE:
                     pullStatus = PullStatus.NO_MATCHED_MSG;
-                    LOGGER.warn("No matched message. GetMessageStatus={}, topic={}, groupId={}, requestOffset={}",
-                            getMessageResult.getStatus(), topic, group, offset);
+                    LOGGER.warn("No matched message. GetMessageStatus={}, topic={}, groupId={}, requestOffset={}", getMessageResult.getStatus(), topic, group, offset);
                     break;
                 case NO_MESSAGE_IN_QUEUE:
                     pullStatus = PullStatus.NO_NEW_MSG;
-                    LOGGER.warn("No new message. GetMessageStatus={}, topic={}, groupId={}, requestOffset={}",
-                            getMessageResult.getStatus(), topic, group, offset);
+                    LOGGER.warn("No new message. GetMessageStatus={}, topic={}, groupId={}, requestOffset={}", getMessageResult.getStatus(), topic, group, offset);
                     break;
                 case MESSAGE_WAS_REMOVING:
                 case NO_MATCHED_LOGIC_QUEUE:
@@ -145,20 +156,17 @@ public class TransactionalMessageBridge {
                 case OFFSET_OVERFLOW_ONE:
                 case OFFSET_TOO_SMALL:
                     pullStatus = PullStatus.OFFSET_ILLEGAL;
-                    LOGGER.warn("Offset illegal. GetMessageStatus={}, topic={}, groupId={}, requestOffset={}",
-                            getMessageResult.getStatus(), topic, group, offset);
+                    LOGGER.warn("Offset illegal. GetMessageStatus={}, topic={}, groupId={}, requestOffset={}", getMessageResult.getStatus(), topic, group, offset);
                     break;
                 default:
                     assert false;
                     break;
             }
 
-            return new PullResult(pullStatus, getMessageResult.getNextBeginOffset(), getMessageResult.getMinOffset(),
-                    getMessageResult.getMaxOffset(), foundList);
+            return new PullResult(pullStatus, getMessageResult.getNextBeginOffset(), getMessageResult.getMinOffset(), getMessageResult.getMaxOffset(), foundList);
 
         } else {
-            LOGGER.error("Get message from store return null. topic={}, groupId={}, requestOffset={}", topic, group,
-                    offset);
+            LOGGER.error("Get message from store return null. topic={}, groupId={}, requestOffset={}", topic, group, offset);
             return null;
         }
     }
@@ -183,19 +191,24 @@ public class TransactionalMessageBridge {
         return store.putMessage(parseHalfMessageInner(messageInner));
     }
 
+    /**
+     * 将消息放入prepare 消息队列
+     * 偷梁换柱topic，把topic换为RMQ_SYS_TRANS_HALF_TOPIC，存入commitLog和consumequeue(给这个组消费：CID_RMQ_SYS_TRANS)下
+     */
     private MessageExtBrokerInner parseHalfMessageInner(MessageExtBrokerInner msgInner) {
-        //偷梁换柱topic，把topic换为RMQ_SYS_TRANS_HALF_TOPIC，存入commitLog和consumequeue(给这个组消费：CID_RMQ_SYS_TRANS)下，
         MessageAccessor.putProperty(msgInner, MessageConst.PROPERTY_REAL_TOPIC, msgInner.getTopic());
-        MessageAccessor.putProperty(msgInner, MessageConst.PROPERTY_REAL_QUEUE_ID,
-                String.valueOf(msgInner.getQueueId()));
-        msgInner.setSysFlag(
-                MessageSysFlag.resetTransactionValue(msgInner.getSysFlag(), MessageSysFlag.TRANSACTION_NOT_TYPE));
+        MessageAccessor.putProperty(msgInner, MessageConst.PROPERTY_REAL_QUEUE_ID, String.valueOf(msgInner.getQueueId()));
+        msgInner.setSysFlag(MessageSysFlag.resetTransactionValue(msgInner.getSysFlag(), MessageSysFlag.TRANSACTION_NOT_TYPE));
         msgInner.setTopic(TransactionalMessageUtil.buildHalfTopic());
         msgInner.setQueueId(0);
         msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgInner.getProperties()));
         return msgInner;
     }
 
+    /**
+     * 将消息放入commit 消息队列
+     * messageQueue就是prepare 队列
+     */
     public boolean putOpMessage(MessageExt messageExt, String opType) {
         MessageQueue messageQueue = new MessageQueue(messageExt.getTopic(),
                 this.brokerController.getBrokerConfig().getBrokerName(), messageExt.getQueueId());
@@ -212,12 +225,10 @@ public class TransactionalMessageBridge {
 
     public boolean putMessage(MessageExtBrokerInner messageInner) {
         PutMessageResult putMessageResult = store.putMessage(messageInner);
-        if (putMessageResult != null
-                && putMessageResult.getPutMessageStatus() == PutMessageStatus.PUT_OK) {
+        if (putMessageResult != null && putMessageResult.getPutMessageStatus() == PutMessageStatus.PUT_OK) {
             return true;
         } else {
-            LOGGER.error("Put message failed, topic: {}, queueId: {}, msgId: {}",
-                    messageInner.getTopic(), messageInner.getQueueId(), messageInner.getMsgId());
+            LOGGER.error("Put message failed, topic: {}, queueId: {}, msgId: {}", messageInner.getTopic(), messageInner.getQueueId(), messageInner.getMsgId());
             return false;
         }
     }
@@ -284,22 +295,25 @@ public class TransactionalMessageBridge {
     }
 
     /**
-     * Use this function while transaction msg is committed or rollback write a flag 'd' to operation queue for the
-     * msg's offset
+     * Use this function while transaction msg is committed or rollback write a flag 'd' to operation queue for the msg's offset
+     * 创建topic=RMQ_SYS_TRANS_OP_HALF_TOPIC，tag=d（REMOVETAG）的消息存入commitLog和consumequeue，body内容就是queueOffset
      *
      * @param messageExt   Op message
      * @param messageQueue Op message queue
      * @return This method will always return true.
      */
     private boolean addRemoveTagInTransactionOp(MessageExt messageExt, MessageQueue messageQueue) {
-        //创建topic=RMQ_SYS_TRANS_OP_HALF_TOPIC，tag=d（REMOVETAG）的消息存入commitLog和consumequeue
-        //body内容就是queueOffset
         Message message = new Message(TransactionalMessageUtil.buildOpTopic(), TransactionalMessageUtil.REMOVETAG,
                 String.valueOf(messageExt.getQueueOffset()).getBytes(TransactionalMessageUtil.charset));
         writeOp(message, messageQueue);
         return true;
     }
 
+    /**
+     * opQueue commit 消息队列
+     *
+     * @param mq prepare 消息队列
+     */
     private void writeOp(Message message, MessageQueue mq) {
         MessageQueue opQueue;
         if (opQueueMap.containsKey(mq)) {
@@ -318,6 +332,9 @@ public class TransactionalMessageBridge {
         putMessage(makeOpMessageInner(message, opQueue));
     }
 
+    /**
+     * 根据prepare 消息队列创建commit 消息队列
+     */
     private MessageQueue getOpQueueByHalf(MessageQueue halfMQ) {
         MessageQueue opQueue = new MessageQueue();
         opQueue.setTopic(TransactionalMessageUtil.buildOpTopic());

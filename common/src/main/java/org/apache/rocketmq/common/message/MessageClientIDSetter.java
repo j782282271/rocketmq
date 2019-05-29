@@ -16,11 +16,12 @@
  */
 package org.apache.rocketmq.common.message;
 
+import org.apache.rocketmq.common.UtilAll;
+
 import java.nio.ByteBuffer;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.apache.rocketmq.common.UtilAll;
 
 public class MessageClientIDSetter {
     private static final String TOPIC_KEY_SPLITTER = "#";
@@ -118,12 +119,19 @@ public class MessageClientIDSetter {
         return buffer.array();
     }
 
+    /**
+     * 该方法由producer发消息之前调用放到msg中(即client端创建)
+     * 发送完之后得到sendResult,sendResult的msgId字段即为此值
+     */
     public static void setUniqID(final Message msg) {
         if (msg.getProperty(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX) == null) {
             msg.putProperty(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX, createUniqID());
         }
     }
 
+    /**
+     * 该方法的返回值用于赋值给SendResult的msgId字段
+     */
     public static String getUniqID(final Message msg) {
         return msg.getProperty(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX);
     }

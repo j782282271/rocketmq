@@ -234,6 +234,7 @@ public class TopicConfigManager extends ConfigManager {
      * AbstractSendMessageProcessor.msgCheck调用本方法
      * 如果本broker不允许自动创建topic，且topic为重试topic，则AbstractSendMessageProcessor.msgCheck创建重试topicConfig
      * 队列数量clientDefaultTopicQueueNums固定等于1，perm为读写
+     * 强制创建topic
      */
     public TopicConfig createTopicInSendMessageBackMethod(
             final String topic, final int clientDefaultTopicQueueNums,

@@ -16,15 +16,15 @@
  */
 package org.apache.rocketmq.store;
 
+import org.apache.rocketmq.store.stats.BrokerStatsManager;
+
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
-import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
 public class GetMessageResult {
 
-    private final List<SelectMappedBufferResult> messageMapedList =
-        new ArrayList<SelectMappedBufferResult>(100);
+    private final List<SelectMappedBufferResult> messageMapedList = new ArrayList<SelectMappedBufferResult>(100);
 
     private final List<ByteBuffer> messageBufferList = new ArrayList<ByteBuffer>(100);
 
@@ -87,7 +87,7 @@ public class GetMessageResult {
         this.messageBufferList.add(mapedBuffer.getByteBuffer());
         this.bufferTotalSize += mapedBuffer.getSize();
         this.msgCount4Commercial += (int) Math.ceil(
-            mapedBuffer.getSize() / BrokerStatsManager.SIZE_PER_COUNT);
+                mapedBuffer.getSize() / BrokerStatsManager.SIZE_PER_COUNT);
     }
 
     public void release() {
@@ -127,8 +127,8 @@ public class GetMessageResult {
     @Override
     public String toString() {
         return "GetMessageResult [status=" + status + ", nextBeginOffset=" + nextBeginOffset + ", minOffset="
-            + minOffset + ", maxOffset=" + maxOffset + ", bufferTotalSize=" + bufferTotalSize
-            + ", suggestPullingFromSlave=" + suggestPullingFromSlave + "]";
+                + minOffset + ", maxOffset=" + maxOffset + ", bufferTotalSize=" + bufferTotalSize
+                + ", suggestPullingFromSlave=" + suggestPullingFromSlave + "]";
     }
 
 }
