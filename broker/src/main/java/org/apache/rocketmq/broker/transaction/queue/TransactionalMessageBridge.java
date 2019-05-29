@@ -39,11 +39,15 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * 针对事务消息的prepare、commit队列的操作
+ */
 public class TransactionalMessageBridge {
     private static final InternalLogger LOGGER = InnerLoggerFactory.getLogger(LoggerName.TRANSACTION_LOGGER_NAME);
 
     /**
      * RMQ_SYS_TRANS_HALF_TOPIC的queue--->RMQ_SYS_TRANS_OP_HALF_TOPIC的queue
+     * * prepare mq---->commit mq
      */
     private final ConcurrentHashMap<MessageQueue, MessageQueue> opQueueMap = new ConcurrentHashMap<>();
     private final BrokerController brokerController;
@@ -99,8 +103,8 @@ public class TransactionalMessageBridge {
      */
     public void updateConsumeOffset(MessageQueue mq, long offset) {
         this.brokerController.getConsumerOffsetManager().commitOffset(
-                RemotingHelper.parseSocketAddressAddr(this.storeHost), TransactionalMessageUtil.buildConsumerGroup(), mq.getTopic(),
-                mq.getQueueId(), offset);
+                RemotingHelper.parseSocketAddressAddr(this.storeHost), TransactionalMessageUtil.buildConsumerGroup(),
+                mq.getTopic(), mq.getQueueId(), offset);
     }
 
     /**
@@ -206,7 +210,8 @@ public class TransactionalMessageBridge {
     }
 
     /**
-     * 将消息放入commit 消息队列
+     * 将prepare消息放入commit 消息队列
+     * 创建topic=RMQ_SYS_TRANS_OP_HALF_TOPIC，tag=d（REMOVETAG）的消息存入commitLog和consumequeue，body内容就是prepare消息的queueOffset
      * messageQueue就是prepare 队列
      */
     public boolean putOpMessage(MessageExt messageExt, String opType) {
@@ -233,22 +238,30 @@ public class TransactionalMessageBridge {
         }
     }
 
+    /**
+     * 将MessageExt转换为MessageExtBrokerInner
+     * 且将prepare消息的queueOffset放到MessageExtBrokerInner的属性中
+     * 同一个消息MessageExt，不管调用此方法多少遍，MessageExtBrokerInner的属性中的queueOffset都是第一条消息的queueOffset
+     */
     public MessageExtBrokerInner renewImmunityHalfMessageInner(MessageExt msgExt) {
         MessageExtBrokerInner msgInner = renewHalfMessageInner(msgExt);
         String queueOffsetFromPrepare = msgExt.getUserProperty(MessageConst.PROPERTY_TRANSACTION_PREPARED_QUEUE_OFFSET);
         if (null != queueOffsetFromPrepare) {
+            //msgExt有PROPERTY_TRANSACTION_PREPARED_QUEUE_OFFSET属性，说明msg第已多次被转化为MessageExtBrokerInner，仍使用上次的queueOffset
             MessageAccessor.putProperty(msgInner, MessageConst.PROPERTY_TRANSACTION_PREPARED_QUEUE_OFFSET,
                     String.valueOf(queueOffsetFromPrepare));
         } else {
+            //msgExt无PROPERTY_TRANSACTION_PREPARED_QUEUE_OFFSET属性，说明msg第一次被转化为MessageExtBrokerInner
             MessageAccessor.putProperty(msgInner, MessageConst.PROPERTY_TRANSACTION_PREPARED_QUEUE_OFFSET,
                     String.valueOf(msgExt.getQueueOffset()));
         }
-
         msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgInner.getProperties()));
-
         return msgInner;
     }
 
+    /**
+     * 将MessageExt转换为MessageExtBrokerInner
+     */
     public MessageExtBrokerInner renewHalfMessageInner(MessageExt msgExt) {
         MessageExtBrokerInner msgInner = new MessageExtBrokerInner();
         msgInner.setTopic(msgExt.getTopic());
@@ -311,6 +324,7 @@ public class TransactionalMessageBridge {
 
     /**
      * opQueue commit 消息队列
+     * 根据prepare 消息队列找到commit 消息队列，将massage放入commit 消息队列
      *
      * @param mq prepare 消息队列
      */

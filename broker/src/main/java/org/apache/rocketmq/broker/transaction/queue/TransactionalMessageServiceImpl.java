@@ -37,6 +37,9 @@ import org.apache.rocketmq.store.PutMessageStatus;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+/***
+ * 事务消息的存储
+ */
 public class TransactionalMessageServiceImpl implements TransactionalMessageService {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.TRANSACTION_LOGGER_NAME);
 
@@ -54,14 +57,23 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
 
     /**
      * RMQ_SYS_TRANS_HALF_TOPIC的queue--->RMQ_SYS_TRANS_OP_HALF_TOPIC的queue
+     * prepare mq---->commit mq
      */
     private ConcurrentHashMap<MessageQueue, MessageQueue> opQueueMap = new ConcurrentHashMap<>();
 
+    /**
+     * SendMessageProcessor，收到事务消息后将消息存入到prepare 消息队列
+     * 本方法将消息真实topic放到property中，使用prepare 消息topic替换原topic,队列id为0，因为prepare 消息队列只有一个
+     */
     @Override
     public PutMessageResult prepareMessage(MessageExtBrokerInner messageInner) {
         return transactionalMessageBridge.putHalfMessage(messageInner);
     }
 
+    /**
+     * 获取msgExt中的TRANSACTION_CHECK_TIMES属性，即为broker回查producer的次数
+     * 如果超过transactionCheckMax则返回true，否则增加TRANSACTION_CHECK_TIMES属性值
+     */
     private boolean needDiscard(MessageExt msgExt, int transactionCheckMax) {
         String checkTimes = msgExt.getProperty(MessageConst.PROPERTY_TRANSACTION_CHECK_TIMES);
         int checkTime = 1;
@@ -77,47 +89,49 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
         return false;
     }
 
+    /**
+     * 消息大于消息最大保存时间(默认72小时)
+     */
     private boolean needSkip(MessageExt msgExt) {
         long valueOfCurrentMinusBorn = System.currentTimeMillis() - msgExt.getBornTimestamp();
         if (valueOfCurrentMinusBorn
-                > transactionalMessageBridge.getBrokerController().getMessageStoreConfig().getFileReservedTime()
-                * 3600L * 1000) {
-            log.info("Half message exceed file reserved time ,so skip it.messageId {},bornTime {}",
-                    msgExt.getMsgId(), msgExt.getBornTimestamp());
+                > transactionalMessageBridge.getBrokerController().getMessageStoreConfig().getFileReservedTime() * 3600L * 1000) {
+            log.info("Half message exceed file reserved time ,so skip it.messageId {},bornTime {}", msgExt.getMsgId(), msgExt.getBornTimestamp());
             return true;
         }
         return false;
     }
 
+    /**
+     * 将消息重新放入msgStore，为了不耽误offset增加
+     * 重置msgExt的queueOffset、commitLogOffset、msgId
+     *
+     * @param offset 原offset,打日志用
+     */
     private boolean putBackHalfMsgQueue(MessageExt msgExt, long offset) {
         PutMessageResult putMessageResult = putBackToHalfQueueReturnResult(msgExt);
-        if (putMessageResult != null
-                && putMessageResult.getPutMessageStatus() == PutMessageStatus.PUT_OK) {
-            msgExt.setQueueOffset(
-                    putMessageResult.getAppendMessageResult().getLogicsOffset());
-            msgExt.setCommitLogOffset(
-                    putMessageResult.getAppendMessageResult().getWroteOffset());
+        if (putMessageResult != null && putMessageResult.getPutMessageStatus() == PutMessageStatus.PUT_OK) {
+            msgExt.setQueueOffset(putMessageResult.getAppendMessageResult().getLogicsOffset());
+            msgExt.setCommitLogOffset(putMessageResult.getAppendMessageResult().getWroteOffset());
             msgExt.setMsgId(putMessageResult.getAppendMessageResult().getMsgId());
-            log.info(
-                    "Send check message, the offset={} restored in queueOffset={} "
-                            + "commitLogOffset={} "
-                            + "newMsgId={} realMsgId={} topic={}",
+            log.info("Send check message, the offset={} restored in queueOffset={} commitLogOffset={} newMsgId={} realMsgId={} topic={}",
                     offset, msgExt.getQueueOffset(), msgExt.getCommitLogOffset(), msgExt.getMsgId(),
-                    msgExt.getUserProperty(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX),
-                    msgExt.getTopic());
+                    msgExt.getUserProperty(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX), msgExt.getTopic());
             return true;
         } else {
-            log.error(
-                    "PutBackToHalfQueueReturnResult write failed, topic: {}, queueId: {}, "
-                            + "msgId: {}",
+            log.error("PutBackToHalfQueueReturnResult write failed, topic: {}, queueId: {}, msgId: {}",
                     msgExt.getTopic(), msgExt.getQueueId(), msgExt.getMsgId());
             return false;
         }
     }
 
+    /**
+     * 与EndTransactionProcessor.processRequest方法对应
+     * 遍历所有prepare queue，从最新提交的queue offset开始，依次向后遍历，检查每一个事务prepare消息的情况，处理完的offset(已确定commit or rollback的offset)放到commit queue
+     *
+     */
     @Override
     public void check(long transactionTimeout, int transactionCheckMax, AbstractTransactionalMessageCheckListener listener) {
-        //与EndTransactionProcessor.processRequest方法对应
         try {
             String topic = MixAll.RMQ_SYS_TRANS_HALF_TOPIC;
             Set<MessageQueue> msgQueues = transactionalMessageBridge.fetchMessageQueues(topic);
@@ -126,28 +140,32 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                 return;
             }
             log.info("Check topic={}, queues={}", topic, msgQueues);
+
             for (MessageQueue messageQueue : msgQueues) {
                 long startTime = System.currentTimeMillis();
                 MessageQueue opQueue = getOpQueue(messageQueue);
+                //prepare消息的已消费offset
                 long halfOffset = transactionalMessageBridge.fetchConsumeOffset(messageQueue);
+                //commit消息的已消费offset
                 long opOffset = transactionalMessageBridge.fetchConsumeOffset(opQueue);
                 log.info("Before check, the queue={} msgOffset={} opOffset={}", messageQueue, halfOffset, opOffset);
                 if (halfOffset < 0 || opOffset < 0) {
-                    log.error("MessageQueue: {} illegal offset read: {}, op offset: {},skip this queue", messageQueue,
-                            halfOffset, opOffset);
+                    log.error("MessageQueue: {} illegal offset read: {}, op offset: {},skip this queue", messageQueue, halfOffset, opOffset);
                     continue;
                 }
 
+                //多次尝试并没有得到结果，已被放到死信队列的消息，后来得到了commit/rollback，然后commit queue offset放入本list中
                 List<Long> doneOpOffset = new ArrayList<>();
+                //已被commit的commit queueOffset->prepare queueOffset
                 HashMap<Long, Long> removeMap = new HashMap<>();
                 PullResult pullResult = fillOpRemoveMap(removeMap, opQueue, opOffset, halfOffset, doneOpOffset);
                 if (null == pullResult) {
-                    log.error("The queue={} check msgOffset={} with opOffset={} failed, pullResult is null",
-                            messageQueue, halfOffset, opOffset);
+                    log.error("The queue={} check msgOffset={} with opOffset={} failed, pullResult is null", messageQueue, halfOffset, opOffset);
                     continue;
                 }
-                // single thread
+                // single thread，记录读出prepare消息为null的次数，如果该值超过MAX_RETRY_COUNT_WHEN_HALF_NULL则停止mq循环更新offset
                 int getMessageNullCount = 1;
+                //从halfOffset开始检查prepare queue的消息
                 long newOffset = halfOffset;
                 //从halfOffset，不断加1开始遍历RMQ_SYS_TRANS_HALF_TOPIC@CID_RMQ_SYS_TRANS这个queue
                 //对比removeMap、doneOpOffset哪些消息已经确认过了就可以增加maxoffset了halfOffset+n处无法确认，则将consumerOffset.json中的maxOffset置为offset+n-1
@@ -158,10 +176,11 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                         break;
                     }
                     if (removeMap.containsKey(i)) {
-                        //已经commit过了，可以跳过此消息++i了
+                        //已经commit过了，可以跳过此消息++i了，即prepare mq offset可以加1了
                         log.info("Half offset {} has been committed/rolled back", i);
                         removeMap.remove(i);
                     } else {
+                        //获取当前offset的消息体
                         GetResult getResult = getHalfMsg(messageQueue, i);
                         MessageExt msgExt = getResult.getMsg();
                         if (msgExt == null) {
@@ -181,7 +200,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                             }
                         }
 
-                        //检查次数过多、时间过长则丢弃该消息的检查，呗丢弃的消息在后续遍历过程中才有机会出现在doneOpOffset中
+                        //检查次数过多、时间过长则丢弃该消息的检查，被丢弃的消息在后续遍历过程中才有机会出现在doneOpOffset中
                         if (needDiscard(msgExt, transactionCheckMax) || needSkip(msgExt)) {
                             listener.resolveDiscardMsg(msgExt);
                             newOffset = i + 1;
@@ -190,8 +209,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                         }
                         //消息的产生时间晚于开始检查时间，则break，停止这一轮检查
                         if (msgExt.getStoreTimestamp() >= startTime) {
-                            log.info("Fresh stored. the miss offset={}, check it later, store={}", i,
-                                    new Date(msgExt.getStoreTimestamp()));
+                            log.info("Fresh stored. the miss offset={}, check it later, store={}", i, new Date(msgExt.getStoreTimestamp()));
                             break;
                         }
 
@@ -202,9 +220,9 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                         if (null != checkImmunityTimeStr) {
                             //checkImmunityTimeStr变为long，乘以1000
                             checkImmunityTime = getImmunityTime(checkImmunityTimeStr, transactionTimeout);
-                            //当前消息的生命小于免检（免回查）时间
+                            //如果显示指定了免检时间，且当前消息的生命小于免检（免回查）时间
                             if (valueOfCurrentMinusBorn < checkImmunityTime) {
-                                //checkPrepareQueueOffset返回true意味着，在免检时间内已经得到commit/rollback消息了，该消息可以跳过了
+                                //checkPrepareQueueOffset返回true意味着，在免检时间内已经得到commit/rollback消息了，或者已重存了该消息，该消息可以跳过了，可以检查条消息了
                                 if (checkPrepareQueueOffset(removeMap, doneOpOffset, msgExt, checkImmunityTime)) {
                                     newOffset = i + 1;
                                     i++;
@@ -212,18 +230,20 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                                 }
                             }
                         } else {
-                            //产生的时间小于免检时间则break
+                            //如果没有显示指定免检时间，则所有消息使用统一的broker设定的免检时间，产生的时间小于免检时间则break，直接取消此轮检查，因为broker配置的免检时间比较短
+                            //可以认为后面的消息都是免检的，所以break,如果消息中用户指定了免检时间，那就不一样了，因为每个消息的免检时间不同可长可短，所以需要特殊处理，见上面的分支
                             if ((0 <= valueOfCurrentMinusBorn) && (valueOfCurrentMinusBorn < checkImmunityTime)) {
-                                log.info("New arrived, the miss offset={}, check it later checkImmunity={}, born={}", i,
-                                        checkImmunityTime, new Date(msgExt.getBornTimestamp()));
+                                log.info("New arrived, the miss offset={}, check it later checkImmunity={}, born={}", i, checkImmunityTime, new Date(msgExt.getBornTimestamp()));
                                 break;
                             }
                         }
-                        //从op队列里取出来的消息
+                        //从commit queue里取出来的消息,该消息只含有一些commit queue的offset信息
                         List<MessageExt> opMsg = pullResult.getMsgFoundList();
                         boolean isNeedCheck = (opMsg == null && valueOfCurrentMinusBorn > checkImmunityTime)//没有op消息，但是超过免检时间
-                                || (opMsg != null && (opMsg.get(opMsg.size() - 1).getBornTimestamp() - startTime > transactionTimeout))//有op消息，且最后一条消息生命大于transactionTimeout
-                                || (valueOfCurrentMinusBorn <= -1);//当前消息born时间晚于检查时间(当前时间)
+                                //有op消息，且最后一条消息生命大于transactionTimeout，貌似op消息体里没有bornTimestamp，可见TransactionalMessageBridge.putOpMessage,并没有放置bornTime
+                                || (opMsg != null && (opMsg.get(opMsg.size() - 1).getBornTimestamp() - startTime > transactionTimeout))
+                                //当前消息born时间晚于检查时间(当前时间)
+                                || (valueOfCurrentMinusBorn <= -1);
 
                         if (isNeedCheck) {
                             //把消息放回commitLog,和prepare consumerQueue,不耽误i++
@@ -234,8 +254,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                             listener.resolveHalfMsg(msgExt);
                         } else {//继续取出op的消息进行check
                             pullResult = fillOpRemoveMap(removeMap, opQueue, pullResult.getNextBeginOffset(), halfOffset, doneOpOffset);
-                            log.info("The miss offset:{} in messageQueue:{} need to get more opMsg, result is:{}", i,
-                                    messageQueue, pullResult);
+                            log.info("The miss offset:{} in messageQueue:{} need to get more opMsg, result is:{}", i, messageQueue, pullResult);
                             continue;
                         }
                     }
@@ -245,7 +264,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                 //以上所有计算都是为了更新/config/consumerOffset中的,之所以计算这么复杂是因为有可能确认的消息logicOffset不连续如果不能紧随之前的offset其后，则无法更新
                 //"RMQ_SYS_TRANS_OP_HALF_TOPIC@CID_RMQ_SYS_TRANS":{0:2834}（commit/rollback消息）
                 //"RMQ_SYS_TRANS_HALF_TOPIC@CID_RMQ_SYS_TRANS":{0:2936}（prepare消息）
-                //如果在2937位置找到了一条消prepare消息，这条消息确认后放到commit消息处loggicOffset为2836，则无法更新2834为2836，因为2835还没被确认，等到2835被确认后
+                //如果在2937位置找到了一条消prepare消息，这条消息确认后放到commit消息处logicOffset为2836，则无法更新2834为2836，因为2835还没被确认，等到2835被确认后
                 //才可以把2834-->2836
                 if (newOffset != halfOffset) {
                     //更新RMQ_SYS_TRANS_HALF_TOPIC的最大offset
@@ -264,9 +283,12 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
 
     }
 
+    /**
+     * 获取免检时间，checkImmunityTimeStr有Long值则使用他*1000
+     * 否则返回transactionTimeout
+     */
     private long getImmunityTime(String checkImmunityTimeStr, long transactionTimeout) {
         long checkImmunityTime;
-
         checkImmunityTime = getLong(checkImmunityTimeStr);
         if (-1 == checkImmunityTime) {
             checkImmunityTime = transactionTimeout;
@@ -278,44 +300,41 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
 
     /**
      * Read op message, parse op message, and fill removeMap
+     * 找到已经处理处的消息即已经确认过的消息(commit或rollback的消息)
+     * 从consumerOffset记录的(RMQ_SYS_TRANS_OP_HALF_TOPIC@CID_RMQ_SYS_TRANS)offset开始往后找，找32条消息
+     * offset往前的消息肯定是全都是已确认过的消息，因为只有offset往前的消息才会记录到consumerOffset的RMQ_SYS_TRANS_OP_HALF_TOPIC@CID_RMQ_SYS_TRANS下面
+     * RMQ_SYS_TRANS_HALF_TOPIC@CID_RMQ_SYS_TRANS这个queue：  logicOffset   |1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|
+     * *******************************************************commitOffset  |101|106|109|...|
+     * *******************************************************CommitLog内容 |msg1|msg6|msg9|....|
+     * *******************************************************consumerOffset  记录了最大消费logicOffset即下次从哪里消费：如10，意味着10以前的offset都已经处理过了commit/rollback/多次尝试并放弃
+     * *RMQ_SYS_TRANS_OP_HALF_TOPIC@CID_RMQ_SYS_TRANS这个queue ：logicOffset   |1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|
+     * **********************************************************commitOffset  |101|106|109|...|
+     * **********************************************************CommitLog内容为RMQ_SYS_TRANS_HALF_TOPIC@CID_RMQ_SYS_TRANS的logicOffset：|2|9|11|1|4|3|6|15|.....|(造成这种非顺序的原因可以理解为有些消息迟迟得不到commit/rollback的确认，需要不断回查)
+     * **********************************************************consumerOffset  记录了最大消费offset即下次从哪里消费：如3
+     * 从logicOffset3开始，检查RMQ_SYS_TRANS_OP_HALF_TOPIC@CID_RMQ_SYS_TRANS的commitLog内容：如果没有则说明没有被确认过的消息，如果有，即上面的|11|1|4|3|6|15|.....
+     * 这些都是被确认过多offset(commit/rollback/多次尝试并放弃)他们依次与RMQ_SYS_TRANS_HALF_TOPIC@CID_RMQ_SYS_TRANS这个queue的第10个logicOffset（也是10）比较
+     * 所有的logicOffset中>=10的offset（11|15|）都认为是新来的确认(commit/rollback)消息，removeMap存11|15|即RMQ_SYS_TRANS_HALF_TOPIC@CID_RMQ_SYS_TRANS的logicOffset，需要加到文件delayOffset.json的此处："RMQ_SYS_TRANS_HALF_TOPIC@CID_RMQ_SYS_TRANS":{0:2936
+     * <10的1|4|3|6（对应RMQ_SYS_TRANS_OP_HALF_TOPIC@CID_RMQ_SYS_TRANS的offset为|4|5|6|7|）都认为是：多次尝试并没有得到结果，已被放到死信队列的消息，后来得到了commit/rollback，这些offset（|4|5|6|7|）存入doneOpOffset，注意是RMQ_SYS_TRANS_OP_HALF_TOPIC@CID_RMQ_SYS_TRANS这个queue这个queue的offset
      *
-     * @param removeMap      Half message to be remove, key:halfOffset, value: opOffset.
-     * @param opQueue        Op message queue.
-     * @param pullOffsetOfOp The begin offset of op message queue.
-     * @param miniOffset     The current minimum offset of half message queue.
-     * @param doneOpOffset   Stored op messages that have been processed.
+     * @param removeMap      Half message to be remove, key:halfOffset(prepare offset), value: opOffset(commit offset)
+     * @param opQueue        Op message queue. commit 队列
+     * @param pullOffsetOfOp The begin offset of op message queue. commit 队列的开始offset
+     * @param miniOffset     The current minimum offset of half message queue. prepare 队列已确认的最小offset
+     * @param doneOpOffset   Stored op messages that have been processed. 多次尝试并没有得到结果，已被放到死信队列的消息，后来得到了commit/rollback
      * @return Op message result.
      */
-    private PullResult fillOpRemoveMap(HashMap<Long, Long> removeMap,
-                                       MessageQueue opQueue, long pullOffsetOfOp, long miniOffset, List<Long> doneOpOffset) {
-        //找到已经处理处的消息即已经确认过的消息(commit或rollback的消息)
-        //从consumerOffset记录的(RMQ_SYS_TRANS_OP_HALF_TOPIC@CID_RMQ_SYS_TRANS)offset开始往后找，找32条消息
-        //offset往前的消息肯定是全都是已确认过的消息，因为只有offset往前的消息才会记录到consumerOffset的RMQ_SYS_TRANS_OP_HALF_TOPIC@CID_RMQ_SYS_TRANS下面
-        //RMQ_SYS_TRANS_HALF_TOPIC@CID_RMQ_SYS_TRANS这个queue：  logicOffset   |1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|
-        //                                                       commitOffset  |101|106|109|...|
-        //                                                       CommitLog内容 |msg1|msg6|msg9|....|
-        //                                                       consumerOffset  记录了最大消费offset即下次从哪里消费：如10，意味着10以前的offset都已经处理过了commit/rollback/多次尝试并放弃
-        //RMQ_SYS_TRANS_OP_HALF_TOPIC@CID_RMQ_SYS_TRANS这个queue ：logicOffset   |1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|
-        //                                                         commitOffset  |101|106|109|...|
-        //                                                         CommitLog内容为RMQ_SYS_TRANS_HALF_TOPIC@CID_RMQ_SYS_TRANS的logicOffset：|2|9|11|1|4|3|6|15|.....|
-        //                                                         consumerOffset  记录了最大消费offset即下次从哪里消费：如3
-        //从logicOffset3开始，检查RMQ_SYS_TRANS_OP_HALF_TOPIC@CID_RMQ_SYS_TRANS的commitLog内容：如果没有则说明没有被确认过的消息，如果有，即上面的|11|1|4|3|6|15|.....
-        //这些都是被确认过多offset(commit/rollback/多次尝试并放弃)他们依次与RMQ_SYS_TRANS_HALF_TOPIC@CID_RMQ_SYS_TRANS这个queue的第10个logicOffset（也是10）比较
-        //所有的logicOffset中>=10的offset（11|15|）都认为是新来的确认(commit/rollback)消息，removeMap存11|15|即RMQ_SYS_TRANS_HALF_TOPIC@CID_RMQ_SYS_TRANS的logicOffset，需要加到文件delayOffset.json的此处："RMQ_SYS_TRANS_HALF_TOPIC@CID_RMQ_SYS_TRANS":{0:2936
-        //<10的1|4|3|6（对应RMQ_SYS_TRANS_OP_HALF_TOPIC@CID_RMQ_SYS_TRANS的offset为|4|5|6|7|）都认为是：多次尝试并放弃的消息，后来却发来了commit，这些offset（|4|5|6|7|）存入doneOpOffset，注意是RMQ_SYS_TRANS_OP_HALF_TOPIC@CID_RMQ_SYS_TRANS这个queue这个queue的offset
+    private PullResult fillOpRemoveMap(HashMap<Long, Long> removeMap, MessageQueue opQueue,
+                                       long pullOffsetOfOp, long miniOffset, List<Long> doneOpOffset) {
         PullResult pullResult = pullOpMsg(opQueue, pullOffsetOfOp, 32);
         if (null == pullResult) {
             return null;
         }
-        if (pullResult.getPullStatus() == PullStatus.OFFSET_ILLEGAL
-                || pullResult.getPullStatus() == PullStatus.NO_MATCHED_MSG) {
-            log.warn("The miss op offset={} in queue={} is illegal, pullResult={}", pullOffsetOfOp, opQueue,
-                    pullResult);
+        if (pullResult.getPullStatus() == PullStatus.OFFSET_ILLEGAL || pullResult.getPullStatus() == PullStatus.NO_MATCHED_MSG) {
+            log.warn("The miss op offset={} in queue={} is illegal, pullResult={}", pullOffsetOfOp, opQueue, pullResult);
             transactionalMessageBridge.updateConsumeOffset(opQueue, pullResult.getNextBeginOffset());
             return pullResult;
         } else if (pullResult.getPullStatus() == PullStatus.NO_NEW_MSG) {
-            log.warn("The miss op offset={} in queue={} is NO_NEW_MSG, pullResult={}", pullOffsetOfOp, opQueue,
-                    pullResult);
+            log.warn("The miss op offset={} in queue={} is NO_NEW_MSG, pullResult={}", pullOffsetOfOp, opQueue, pullResult);
             return pullResult;
         }
         List<MessageExt> opMsg = pullResult.getMsgFoundList();
@@ -325,14 +344,13 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
         }
         for (MessageExt opMessageExt : opMsg) {
             //opMessageExt：已经处理处的消息即已经确认过的消息(commit或rollback的消息)
-            //已处理过消息的queueOffset logicOffset。body就是offset，见getTransactionalMessageService().deletePrepareMessage()调用，bridage.addRemoveTagInTransactionOp
+            //已处理过消息的queueOffset logicOffset。body就是prepare队列的logic offset，见getTransactionalMessageService().deletePrepareMessage()调用，bridage.addRemoveTagInTransactionOp
             Long queueOffset = getLong(new String(opMessageExt.getBody(), TransactionalMessageUtil.charset));
-            log.info("Topic: {} tags: {}, OpOffset: {}, HalfOffset: {}", opMessageExt.getTopic(),
-                    opMessageExt.getTags(), opMessageExt.getQueueOffset(), queueOffset);
+            log.info("Topic: {} tags: {}, OpOffset: {}, HalfOffset: {}", opMessageExt.getTopic(), opMessageExt.getTags(), opMessageExt.getQueueOffset(), queueOffset);
             if (TransactionalMessageUtil.REMOVETAG.equals(opMessageExt.getTags())) {
                 //miniOffset没处理过的消息即处于prepare状态的消息的最小logicOffset
                 if (queueOffset < miniOffset) {
-                    //存放的是RMQ_SYS_TRANS_OP_HALF_TOPIC@CID_RMQ_SYS_TRANS这个conumerqueue的offset
+                    //存放的是RMQ_SYS_TRANS_OP_HALF_TOPIC@CID_RMQ_SYS_TRANS这个consumeQueue的offset
                     doneOpOffset.add(opMessageExt.getQueueOffset());
                 } else {
                     removeMap.put(queueOffset, opMessageExt.getQueueOffset());
@@ -348,38 +366,42 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
 
     /**
      * If return true, skip this msg
+     * 返回true，说明该消息：已过免检时间 or 已经commit/rollback或者该消息 or 再次存储了该消息
+     * 如果消息还没过免检时间则再存储一遍，再存储一遍的消息property中含有首次存储prepare消息的queueOffset,即一直指向第一次存储的queueOffset
+     * 再存一遍，和consumer sendMsgBack2Broker原理一样，都是为了推进offset，防止offset卡住无法推进
      *
      * @param removeMap         Op message map to determine whether a half message was responded by producer.
+     *                          key:已经commit过的prepare消息的offset;value 已经commit过的commit消息的offset
      * @param doneOpOffset      Op Message which has been checked.
      * @param msgExt            Half message
      * @param checkImmunityTime User defined time to avoid being detected early.
      * @return Return true if put success, otherwise return false.
      */
-    private boolean checkPrepareQueueOffset(HashMap<Long, Long> removeMap, List<Long> doneOpOffset, MessageExt msgExt,
-                                            long checkImmunityTime) {
+    private boolean checkPrepareQueueOffset(HashMap<Long, Long> removeMap, List<Long> doneOpOffset, MessageExt msgExt, long checkImmunityTime) {
         //当前消息的生命小于免检时间
         if (System.currentTimeMillis() - msgExt.getBornTimestamp() < checkImmunityTime) {
             //当前消息在halfQueue的offset
             String prepareQueueOffsetStr = msgExt.getUserProperty(MessageConst.PROPERTY_TRANSACTION_PREPARED_QUEUE_OFFSET);
             if (null == prepareQueueOffsetStr) {
+                //如果为空，说明该消息没有被存储过免检消息，那么存储一次免检消息。存储成功返回true，失败返回false
                 return putImmunityMsgBackToHalfQueue(msgExt);
             } else {
+                //如果不为空，说明该消息被存储过免检消息
                 long prepareQueueOffset = getLong(prepareQueueOffsetStr);
                 if (-1 == prepareQueueOffset) {
                     return false;
                 } else {
-                    //小于免检时间，且在免检时间内commit/rollback了，认为该消息通过检测了，返回true让外层i+1
+                    //小于免检时间，且存储过免检消息，且在最初的消息在免检时间内commit/rollback了，认为该消息通过检测了，返回true让外层i+1
                     if (removeMap.containsKey(prepareQueueOffset)) {
                         long tmpOpOffset = removeMap.remove(prepareQueueOffset);
                         doneOpOffset.add(tmpOpOffset);
                         return true;
                     } else {
+                        //小于免检时间，且存储过免检消息，在免检时间内没有得到commit/rollback信息，则将消息再次存储一遍
                         return putImmunityMsgBackToHalfQueue(msgExt);
                     }
                 }
-
             }
-
         } else {
             return true;
         }
@@ -387,6 +409,8 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
 
     /**
      * Write messageExt to Half topic again
+     * 将messageExt转换为MessageExtBrokerInner，存储到msgStore中
+     * 不需要再property中保持记录第一条消息的queueOffset
      *
      * @param messageExt Message will be write back to queue
      * @return Put result can used to determine the specific results of storage.
@@ -402,6 +426,12 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
         return putMessageResult;
     }
 
+    /**
+     * 将MessageExt转换为MessageExtBrokerInner
+     * 且将Prepare消息的queueOffset放到MessageExtBrokerInner的属性中
+     * 存储MessageExtBrokerInner
+     * 同一个消息MessageExt，不管调用此方法多少遍，MessageExtBrokerInner的属性中的queueOffset都是第一条消息的queueOffset
+     */
     private boolean putImmunityMsgBackToHalfQueue(MessageExt messageExt) {
         MessageExtBrokerInner msgInner = transactionalMessageBridge.renewImmunityHalfMessageInner(messageExt);
         return transactionalMessageBridge.putMessage(msgInner);
@@ -453,6 +483,9 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
 
     }
 
+    /**
+     * 从oldOffset开始增加offset，doneOffset连续的含有比doneOffset大的数值，有多少加多少，直到不连续为止
+     */
     private long calculateOpOffset(List<Long> doneOffset, long oldOffset) {
         Collections.sort(doneOffset);
         long newOffset = oldOffset;
@@ -464,9 +497,11 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
             }
         }
         return newOffset;
-
     }
 
+    /**
+     * 根据prepare mq找到commit mq
+     */
     private MessageQueue getOpQueue(MessageQueue messageQueue) {
         MessageQueue opQueue = opQueueMap.get(messageQueue);
         if (opQueue == null) {
@@ -478,6 +513,9 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
 
     }
 
+    /**
+     * 根据logic offset获取prepare 消息
+     */
     private GetResult getHalfMsg(MessageQueue messageQueue, long offset) {
         GetResult getResult = new GetResult();
 
@@ -491,6 +529,9 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
         return getResult;
     }
 
+    /**
+     * 根据commitLogOffset读取消息
+     */
     private OperationResult getHalfMessageByOffset(long commitLogOffset) {
         OperationResult response = new OperationResult();
         MessageExt messageExt = this.transactionalMessageBridge.lookMessageByOffset(commitLogOffset);
@@ -504,6 +545,9 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
         return response;
     }
 
+    /**
+     * 将prepare消息放入commit 消息队列
+     */
     @Override
     public boolean deletePrepareMessage(MessageExt msgExt) {
         if (this.transactionalMessageBridge.putOpMessage(msgExt, TransactionalMessageUtil.REMOVETAG)) {
@@ -515,11 +559,17 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
         }
     }
 
+    /**
+     * 实际上只是读出消息
+     */
     @Override
     public OperationResult commitMessage(EndTransactionRequestHeader requestHeader) {
         return getHalfMessageByOffset(requestHeader.getCommitLogOffset());
     }
 
+    /**
+     * 实际上只是读出消息
+     */
     @Override
     public OperationResult rollbackMessage(EndTransactionRequestHeader requestHeader) {
         return getHalfMessageByOffset(requestHeader.getCommitLogOffset());
