@@ -269,10 +269,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                         exception = e;
                     }
 
-                    this.processTransactionState(
-                            localTransactionState,
-                            group,
-                            exception);
+                    this.processTransactionState(localTransactionState, group, exception);
                 } else {
                     log.warn("checkTransactionState, pick transactionCheckListener by group[{}] failed", group);
                 }
@@ -281,10 +278,8 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             /**
              * 将本地事物状态发回给broker
              * */
-            private void processTransactionState(
-                    final LocalTransactionState localTransactionState,
-                    final String producerGroup,
-                    final Throwable exception) {
+            private void processTransactionState(final LocalTransactionState localTransactionState,
+                                                 final String producerGroup, final Throwable exception) {
                 final EndTransactionRequestHeader thisHeader = new EndTransactionRequestHeader();
                 thisHeader.setCommitLogOffset(checkRequestHeader.getCommitLogOffset());
                 thisHeader.setProducerGroup(producerGroup);

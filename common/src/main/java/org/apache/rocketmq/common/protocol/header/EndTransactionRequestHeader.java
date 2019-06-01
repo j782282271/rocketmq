@@ -35,6 +35,9 @@ public class EndTransactionRequestHeader implements CommandCustomHeader {
     // TRANSACTION_ROLLBACK_TYPE
     // TRANSACTION_NOT_TYPE
 
+    /**
+     * 是否因为broker回查，所以producer发过来end请求
+     */
     @CFNullable
     private Boolean fromTransactionCheck = false;
 
@@ -119,13 +122,13 @@ public class EndTransactionRequestHeader implements CommandCustomHeader {
     @Override
     public String toString() {
         return "EndTransactionRequestHeader{" +
-            "producerGroup='" + producerGroup + '\'' +
-            ", tranStateTableOffset=" + tranStateTableOffset +
-            ", commitLogOffset=" + commitLogOffset +
-            ", commitOrRollback=" + commitOrRollback +
-            ", fromTransactionCheck=" + fromTransactionCheck +
-            ", msgId='" + msgId + '\'' +
-            ", transactionId='" + transactionId + '\'' +
-            '}';
+                "producerGroup='" + producerGroup + '\'' +
+                ", tranStateTableOffset=" + tranStateTableOffset +
+                ", commitLogOffset=" + commitLogOffset +
+                ", commitOrRollback=" + commitOrRollback +
+                ", fromTransactionCheck=" + fromTransactionCheck +
+                ", msgId='" + msgId + '\'' +
+                ", transactionId='" + transactionId + '\'' +
+                '}';
     }
 }

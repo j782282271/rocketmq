@@ -22,8 +22,8 @@ import org.apache.rocketmq.common.message.MessageQueue;
 public class SendResult {
     private SendStatus sendStatus;
     /**
-     * 由client端自己计算出来的，调用方法：MessageClientIDSetter.getUniqID(msg);得到id
-     * 放到此处
+     * 由client端自己计算出来的，调用方法：MessageClientIDSetter.getUniqID(msg);得到id放到此处，
+     * 见MQClientAPIImpl中new SendResult构造函数传参
      */
     private String msgId;
     private MessageQueue messageQueue;
@@ -33,8 +33,8 @@ public class SendResult {
     private long queueOffset;
     private String transactionId;
     /**
-     * 含有ip:port和commitLog的phyoffset信息可以decode出来，和msgId格式相同
-     * 由broker返回的
+     * 含有ip:port和commitLog的phyoffset信息可以decode出来，和msgId格式相同，由broker返回的
+     * 见MQClientAPIImpl中new SendResult构造函数传参
      */
     private String offsetMsgId;
     private String regionId;
