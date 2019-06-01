@@ -39,6 +39,9 @@ public class ManyMessageTransfer extends AbstractReferenceCounted implements Fil
         this.getMessageResult = getMessageResult;
     }
 
+    /**
+     * header+所有body的position
+     */
     @Override
     public long position() {
         int pos = byteBufferHeader.position();
@@ -60,7 +63,7 @@ public class ManyMessageTransfer extends AbstractReferenceCounted implements Fil
     }
 
     /**
-     * 先将byteBufferHeader转移到target中，再将getMessageResult转移到target中
+     * 先将header：byteBufferHeader转移到target中，再将body getMessageResult转移到target中
      */
     @Override
     public long transferTo(WritableByteChannel target, long position) throws IOException {
@@ -76,7 +79,6 @@ public class ManyMessageTransfer extends AbstractReferenceCounted implements Fil
                 }
             }
         }
-
         return 0;
     }
 
