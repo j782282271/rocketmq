@@ -33,21 +33,25 @@ public class DispatchRequest {
     private final int sysFlag;
     private final long preparedTransactionOffset;
     private final Map<String, String> propertiesMap;
+    /**
+     * 如果broker开启了布隆过滤
+     * 则该值经过CommitLogDispatcherCalcBitMap计算，会被存储起来，查询的时候使用该值进行查询
+     */
     private byte[] bitMap;
 
     public DispatchRequest(
-        final String topic,
-        final int queueId,
-        final long commitLogOffset,
-        final int msgSize,
-        final long tagsCode,
-        final long storeTimestamp,
-        final long consumeQueueOffset,
-        final String keys,
-        final String uniqKey,
-        final int sysFlag,
-        final long preparedTransactionOffset,
-        final Map<String, String> propertiesMap
+            final String topic,
+            final int queueId,
+            final long commitLogOffset,
+            final int msgSize,
+            final long tagsCode,
+            final long storeTimestamp,
+            final long consumeQueueOffset,
+            final String keys,
+            final String uniqKey,
+            final int sysFlag,
+            final long preparedTransactionOffset,
+            final Map<String, String> propertiesMap
     ) {
         this.topic = topic;
         this.queueId = queueId;

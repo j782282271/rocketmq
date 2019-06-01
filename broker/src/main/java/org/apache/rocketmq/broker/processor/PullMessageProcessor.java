@@ -160,13 +160,15 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         //是否commitOffset
         final boolean hasCommitOffsetFlag = PullSysFlag.hasCommitOffsetFlag(requestHeader.getSysFlag());
         //是否使用subExpress：tag或者SQL92
+        //DefaultMQPushConsumerImpl.pullmessage的时候，会根据defaultMQPushConsumer.isPostSubscriptionWhenPull() 配置
+        //判断是否每次拉取消息的时候都发送订阅信息给broker，如果每次拉取消息都发订阅信息给broker则此处为true，否则为false，默认为false
         final boolean hasSubscriptionFlag = PullSysFlag.hasSubscriptionFlag(requestHeader.getSysFlag());
         //long polling 时长
         final long suspendTimeoutMillisLong = hasSuspendFlag ? requestHeader.getSuspendTimeoutMillis() : 0;
 
-        SubscriptionData subscriptionData = null;
+        SubscriptionData subscriptionData;
         ConsumerFilterData consumerFilterData = null;
-        if (hasSubscriptionFlag) {//使用subExpress：tag或者SQL92
+        if (hasSubscriptionFlag) {//每次拉取消息的时候都发送订阅信息给broker
             try {
                 subscriptionData = FilterAPI.build(
                         requestHeader.getTopic(), requestHeader.getSubscription(), requestHeader.getExpressionType());
@@ -174,8 +176,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                     //非tag形式过滤，sql92过滤
                     consumerFilterData = ConsumerFilterManager.build(
                             requestHeader.getTopic(), requestHeader.getConsumerGroup(), requestHeader.getSubscription(),
-                            requestHeader.getExpressionType(), requestHeader.getSubVersion()
-                    );
+                            requestHeader.getExpressionType(), requestHeader.getSubVersion());
                     assert consumerFilterData != null;
                 }
             } catch (Exception e) {
@@ -185,7 +186,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                 response.setRemark("parse the consumer's subscription failed");
                 return response;
             }
-        } else {//不使用subExpress：既不使用tag过滤也不使用SQL92过滤
+        } else {//每次拉取消息的时候都不发送订阅信息给broker
             ConsumerGroupInfo consumerGroupInfo =
                     this.brokerController.getConsumerManager().getConsumerGroupInfo(requestHeader.getConsumerGroup());
             if (null == consumerGroupInfo) {
@@ -218,8 +219,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                 return response;
             }
             if (!ExpressionType.isTagType(subscriptionData.getExpressionType())) {
-                consumerFilterData = this.brokerController.getConsumerFilterManager().get(requestHeader.getTopic(),
-                        requestHeader.getConsumerGroup());
+                consumerFilterData = this.brokerController.getConsumerFilterManager().get(requestHeader.getTopic(), requestHeader.getConsumerGroup());
                 if (consumerFilterData == null) {
                     response.setCode(ResponseCode.FILTER_DATA_NOT_EXIST);
                     response.setRemark("The broker's consumer filter data is not exist!Your expression may be wrong!");

@@ -26,7 +26,12 @@ import java.util.Arrays;
  */
 public class BloomFilterData {
 
+    /**
+     * hash function num,每个hash function输入一个待判断的数据都会得到一个结果，该结果为第index位为1
+     * 所有index结果组成int[] bisPos
+     */
     private int[] bitPos;
+    //最大bit count
     private int bitNum;
 
     public BloomFilterData() {
@@ -80,8 +85,8 @@ public class BloomFilterData {
     @Override
     public String toString() {
         return "BloomFilterData{" +
-            "bitPos=" + Arrays.toString(bitPos) +
-            ", bitNum=" + bitNum +
-            '}';
+                "bitPos=" + Arrays.toString(bitPos) +
+                ", bitNum=" + bitNum +
+                '}';
     }
 }

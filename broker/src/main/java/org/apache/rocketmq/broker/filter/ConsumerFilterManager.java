@@ -46,8 +46,7 @@ public class ConsumerFilterManager extends ConfigManager {
 
     private static final long MS_24_HOUR = 24 * 3600 * 1000;
 
-    private ConcurrentMap<String/*Topic*/, FilterDataMapByTopic>
-            filterDataByTopic = new ConcurrentHashMap<String/*consumer group*/, FilterDataMapByTopic>(256);
+    private ConcurrentMap<String/*Topic*/, FilterDataMapByTopic> filterDataByTopic = new ConcurrentHashMap<String/*consumer group*/, FilterDataMapByTopic>(256);
 
     private transient BrokerController brokerController;
     private transient BloomFilter bloomFilter;
@@ -79,7 +78,6 @@ public class ConsumerFilterManager extends ConfigManager {
         if (ExpressionType.isTagType(type)) {
             return null;
         }
-
         ConsumerFilterData consumerFilterData = new ConsumerFilterData();
         consumerFilterData.setTopic(topic);
         consumerFilterData.setConsumerGroup(consumerGroup);
@@ -89,9 +87,7 @@ public class ConsumerFilterManager extends ConfigManager {
         consumerFilterData.setExpressionType(type);
         consumerFilterData.setClientVersion(clientVersion);
         try {
-            consumerFilterData.setCompiledExpression(
-                    FilterFactory.INSTANCE.get(type).compile(expression)
-            );
+            consumerFilterData.setCompiledExpression(FilterFactory.INSTANCE.get(type).compile(expression));
         } catch (Throwable e) {
             log.error("parse error: expr={}, topic={}, group={}, error={}", expression, topic, consumerGroup, e.getMessage());
             return null;
@@ -322,7 +318,7 @@ public class ConsumerFilterManager extends ConfigManager {
     public static class FilterDataMapByTopic {
 
         private ConcurrentMap<String/*consumer group*/, ConsumerFilterData>
-                groupFilterData = new ConcurrentHashMap<String, ConsumerFilterData>();
+                groupFilterData = new ConcurrentHashMap<>();
 
         private String topic;
 

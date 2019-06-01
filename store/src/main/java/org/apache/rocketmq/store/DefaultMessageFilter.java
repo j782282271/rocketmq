@@ -39,8 +39,7 @@ public class DefaultMessageFilter implements MessageFilter {
             return true;
         }
 
-        return subscriptionData.getSubString().equals(SubscriptionData.SUB_ALL)
-            || subscriptionData.getCodeSet().contains(tagsCode.intValue());
+        return subscriptionData.getSubString().equals(SubscriptionData.SUB_ALL) || subscriptionData.getCodeSet().contains(tagsCode.intValue());
     }
 
     @Override

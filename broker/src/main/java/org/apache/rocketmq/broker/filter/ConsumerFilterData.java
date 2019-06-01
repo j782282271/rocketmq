@@ -56,6 +56,7 @@ public class ConsumerFilterData {
      * Check this filter data has been used to calculate bit map when msg was stored in server.
      */
     public boolean isMsgInLive(long msgStoreTime) {
+        //消息存储时间晚于当前filterData的出现时间才认为该消息可以使用布隆过滤器
         return msgStoreTime > getBornTime();
     }
 

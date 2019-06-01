@@ -420,8 +420,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
             classFilter = sd.isClassFilterMode();
         }
 
-        int sysFlag = PullSysFlag.buildSysFlag(commitOffsetEnable, true,
-                subExpression != null, classFilter);
+        int sysFlag = PullSysFlag.buildSysFlag(commitOffsetEnable, true, subExpression != null, classFilter);
         try {
             this.pullAPIWrapper.pullKernelImpl(
                     pullRequest.getMessageQueue(), subExpression,
