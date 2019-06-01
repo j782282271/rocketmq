@@ -126,9 +126,19 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
     }
 
     /**
-     * 与EndTransactionProcessor.processRequest方法对应
-     * 遍历所有prepare queue，从最新提交的queue offset开始，依次向后遍历，检查每一个事务prepare消息的情况，处理完的offset(已确定commit or rollback的offset)放到commit queue
-     *
+     * EndTransactionProcessor.processRequest方法中处理：prepare queue的消息得到commit or rollback后，会将prepare queue的消息logicQueueOffset放到commit queue
+     * 本方法的作用：定时向producer回查迟迟未得到确认的消息的状况
+     * 遍历所有prepare queue，每个queue做如下处理：
+     * 从最新提交的queue offset开始，依次向后+1遍历，检查每一个事务prepare消息的情况：
+     * 1如果该消息已经存在于commit queue中，说明该消息不需要回查check，推进，检查下一个logQueueOffset
+     * 2如果该消息超过允许的检查次数，则跳过该消息
+     * 3消息的产生时间晚于开始检查时间，则停止本轮检查，直接break,检查下一个mq
+     * 4如果消息没有超过免检时间，且该消息没有使用自定义免检时间则，直接break,检查下一个mq
+     * 5如果消息没有超过免检时间，且该消息使用自定义免检时间则，:
+     * 检查该消息是否已经重存过，如果重存过则获取其之前存储的logqueueOffset(也是初始prepare queue Offset)，看看该offset是否已经commit
+     * 如果其初始prepare queue Offset已经commit，则跳过本条offset，检查下一prepare Offset
+     * 如果其初始prepare queue Offset尚未commit，重存该消息到prepare queue，然后跳过本条offset，检查下一prepare Offset
+     * 6如果消息超过免检时间，回查，且将消息重放如prepare queue，为了不耽误队列增加
      */
     @Override
     public void check(long transactionTimeout, int transactionCheckMax, AbstractTransactionalMessageCheckListener listener) {
@@ -239,8 +249,12 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                         }
                         //从commit queue里取出来的消息,该消息只含有一些commit queue的offset信息
                         List<MessageExt> opMsg = pullResult.getMsgFoundList();
+                        //判断当前获取的最后一条OpMsg的存储时间是否超过了事务超时时间，如果为true也要进行事务状态回查，为什么要这么做呢？
+                        //因为在下文中，如果isNeedCheck=true，会调用putBackHalfMsgQueue重新将opMsg放入opQueue中，重新放入的消息被重置了queueOffSet，commitLogOffSet，即将消费位点前移了，放到opQueue最新一条消息中 所以
+                        //如果事务状态回查成功，则fillOpRemoveMap会使得doneOpOffset包含该halfQueue offSet，即使消费位点前移了，后续也不会再重复处理
+                        //如果事务状态回查失败，则判断拉取到的32条消息的最新一条消息存储时间是否超过超时时间，如果是，那肯定是回查失败的，继续进行回查
                         boolean isNeedCheck = (opMsg == null && valueOfCurrentMinusBorn > checkImmunityTime)//没有op消息，但是超过免检时间
-                                //有op消息，且最后一条消息生命大于transactionTimeout，貌似op消息体里没有bornTimestamp，可见TransactionalMessageBridge.putOpMessage,并没有放置bornTime
+                                //有op消息，且最后一条消息生命大于transactionTimeout，貌似op消息体的bornTimestamp，可见TransactionalMessageBridge.putOpMessage,并没有放置bornTime
                                 || (opMsg != null && (opMsg.get(opMsg.size() - 1).getBornTimestamp() - startTime > transactionTimeout))
                                 //当前消息born时间晚于检查时间(当前时间)
                                 || (valueOfCurrentMinusBorn <= -1);
@@ -367,8 +381,10 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
     /**
      * If return true, skip this msg
      * 返回true，说明该消息：已过免检时间 or 已经commit/rollback或者该消息 or 再次存储了该消息
-     * 如果消息还没过免检时间则再存储一遍，再存储一遍的消息property中含有首次存储prepare消息的queueOffset,即一直指向第一次存储的queueOffset
-     * 再存一遍，和consumer sendMsgBack2Broker原理一样，都是为了推进offset，防止offset卡住无法推进
+     * 如果消息没有超过免检时间，且该消息使用自定义免检时间则:
+     * 检查该消息是否已经重存过，如果重存过则获取其之前存储的logqueueOffset(也是初始prepare queue Offset)，看看该offset是否已经commit
+     * 如果其初始prepare queue Offset已经commit，则返回true，外部得到true，跳过本条offset，检查下一prepare Offset
+     * 如果其初始prepare queue Offset尚未commit，重存该消息到prepare queue，并返回true，外部得到true，跳过本条offset，检查下一prepare Offset
      *
      * @param removeMap         Op message map to determine whether a half message was responded by producer.
      *                          key:已经commit过的prepare消息的offset;value 已经commit过的commit消息的offset
