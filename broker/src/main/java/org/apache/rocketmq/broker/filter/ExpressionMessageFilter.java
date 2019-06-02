@@ -34,6 +34,9 @@ import java.util.Map;
 /**
  * property sql表达式过滤+布隆过滤
  * 布隆过滤器与CommitLogDispatcherCalcBitMap类对应
+ * CommitLogDispatcherCalcBitMap类在写数据到存储时，依次对比每个订阅组表达式的property sql，如果匹配上了，则为该订阅组在DispatchRequest.bitMap添加几个位的标识
+ * CommitLogDispatcherCalcBitMap类外部会将该bitmap存储到ConsumeQueueExt中，这样，
+ * 在consumer查消息的时候通过ExpressionMessageFilter判断ConsumeQueueExt可以快速过滤掉不满足条件的消息
  */
 public class ExpressionMessageFilter implements MessageFilter {
 

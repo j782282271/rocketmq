@@ -80,12 +80,10 @@ public class ExpressionForRetryMessageFilter extends ExpressionMessageFilter {
         Object ret = null;
         try {
             MessageEvaluationContext context = new MessageEvaluationContext(tempProperties);
-
             ret = realFilterData.getCompiledExpression().evaluate(context);
         } catch (Throwable e) {
             log.error("Message Filter error, " + realFilterData + ", " + tempProperties, e);
         }
-
         log.debug("Pull eval result: {}, {}, {}", ret, realFilterData, tempProperties);
 
         if (ret == null || !(ret instanceof Boolean)) {
