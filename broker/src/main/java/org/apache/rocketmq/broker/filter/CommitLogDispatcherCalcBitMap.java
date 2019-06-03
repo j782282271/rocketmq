@@ -31,8 +31,10 @@ import java.util.Iterator;
 /**
  * Calculate bit map of filter.
  * 布隆过滤器与ExpressionMessageFilter类对应
- * 本类在写数据到存储时，依次对比每个订阅组表达式的property sql，如果匹配上了，则为该订阅组在DispatchRequest.bitMap添加几个位的标识
- * 该类外部会将该bitmap存储到ConsumeQueueExt中，这样，在consumer查消息的时候通过ConsumeQueueExt可以快速过滤掉不满足条件的消息
+ * 本类在写数据到存储时，匹配当前消息与每个订阅组表达式的property sql，
+ * 如果匹配上了，则为该订阅组在DispatchRequest.bitMap添加几个位的标识（该标识存在ConsumerFilterData中，由topic+consumerGroup决定，见ConsumerFilterManager.register方法）
+ * 该类外部会将该bitmap持久化到ConsumeQueueExt中，这样，在consumer查消息的时候通过consumer的topic+consumerGroup找到ConsumerFilterData，通过对比ConsumerFilterData的标识位
+ * 与ConsumeQueueExt中的bitmap，可以快读粗略判断消息是否匹配当前consumerGroup
  */
 public class CommitLogDispatcherCalcBitMap implements CommitLogDispatcher {
 
@@ -51,7 +53,8 @@ public class CommitLogDispatcherCalcBitMap implements CommitLogDispatcher {
      * 1获取所有本topic的消费者相关的ConsumerFilterData集合
      * 2ConsumerFilterData中含有消费组的订阅表达式CompiledExpression
      * 3遍历所有本topic下的ConsumerFilterData集合，分别校验每个消费组是否的订阅表达式和当前消息的property是否匹配
-     * 4如果匹配则，在filterBitMap，指定的几个位置记录1，之所以是几个，是因为是布隆过滤器，在这里不同的consumer group的设置为1的位置不相同
+     * 4如果匹配则，在filterBitMap，指定的几个位置记录1，之所以是几个，是因为是布隆过滤器，在这里不同的consumer group的设置为1的位置不相同,
+     * 最终filterBitMap在不同位上，会被打上各个consumerGroup的的标识，也就是说该filterBitMap，可以粗略的看出哪几个consumerGroup能匹配上
      * 这样ExpressionMessageFilter就可以区分consumer group,进行过滤消息了
      * 此处类相当于在消费时的过滤提前到发送时候异步过滤（property转bit过滤），然后放到bitmap中存储了区分信息，在过拉取消息过滤时候，优先使用该bitmap过滤，提高了性能
      */

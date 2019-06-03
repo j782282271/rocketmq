@@ -39,6 +39,12 @@ import java.util.concurrent.ConcurrentMap;
 
 /**
  * Consumer filter data manager.Just manage the consumers use expression filter.
+ * 管理了topic->consumerGroup->ConsumerFilterData的映射关系
+ * 其中ConsumerFilterData中的数据，在本类中计算，ConsumerFilterData主要包括以下数据：
+ * 1property sql 表达式
+ * 2topic+consumerGroup这个String，通过bloomFilter.k个函数，计算出bloomFilter.m这些位中哪几位为1，放在BloomFilterData中
+ * producer发送消息时（CommitLogDispatcherCalcBitMap），遍历该topic下各个consumerGroup的BloomFilterData，如果与msg property匹配上了，为该消息bitmap对应位打标识(bitmap会被打上各个匹配上的consumerGroup的标识)
+ * 该ConsumerFilterData也可用于consumer消费消息，初步过滤消息；
  */
 public class ConsumerFilterManager extends ConfigManager {
 

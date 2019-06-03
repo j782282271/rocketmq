@@ -999,6 +999,9 @@ public class MQClientInstance {
         this.adminExtTable.remove(group);
     }
 
+    /**
+     * broker端监听到了其它client的加入或者退出等变化，会立即通知client，调用此方法进行立即复杂均衡，不需要等待下次定时任务进行负载均衡
+     */
     public void rebalanceImmediately() {
         this.rebalanceService.wakeup();
     }

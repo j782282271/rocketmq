@@ -72,10 +72,10 @@ public class ClientManageProcessor implements NettyRequestProcessor {
     }
 
     /**
-     * 一个client可能既是consumer又是producer
-     * 如果心跳含有consumer信息，且broker有该consumerGroup的订阅信息则，创建重试topic
-     * 注册consumer信息
-     * 如果心跳含有producer信息，则注册producer信息
+     * 1一个client可能既是consumer又是producer
+     * 2如果心跳含有consumer信息，且broker有该consumerGroup的订阅信息则，创建重试topic
+     * 3注册consumer信息
+     * 4如果心跳含有producer信息，则注册producer信息
      */
     public RemotingCommand heartBeat(ChannelHandlerContext ctx, RemotingCommand request) {
         RemotingCommand response = RemotingCommand.createResponseCommand(null);
@@ -88,6 +88,7 @@ public class ClientManageProcessor implements NettyRequestProcessor {
                     findSubscriptionGroupConfig(data.getGroupName());
             boolean isNotifyConsumerIdsChangedEnable = true;
             if (null != subscriptionGroupConfig) {
+                //broker端记录的subscriptionGroupConfig不为null，创建retryTopic
                 isNotifyConsumerIdsChangedEnable = subscriptionGroupConfig.isNotifyConsumerIdsChangedEnable();
                 int topicSysFlag = 0;
                 if (data.isUnitMode()) {
@@ -103,7 +104,6 @@ public class ClientManageProcessor implements NettyRequestProcessor {
             boolean changed = this.brokerController.getConsumerManager().registerConsumer(
                     data.getGroupName(), clientChannelInfo, data.getConsumeType(), data.getMessageModel(),
                     data.getConsumeFromWhere(), data.getSubscriptionDataSet(), isNotifyConsumerIdsChangedEnable);
-
             if (changed) {
                 log.info("registerConsumer info changed {} {}", data.toString(), RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
             }
@@ -125,8 +125,7 @@ public class ClientManageProcessor implements NettyRequestProcessor {
         final UnregisterClientRequestHeader requestHeader = (UnregisterClientRequestHeader) request
                 .decodeCommandCustomHeader(UnregisterClientRequestHeader.class);
 
-        ClientChannelInfo clientChannelInfo = new ClientChannelInfo(ctx.channel(), requestHeader.getClientID(),
-                request.getLanguage(), request.getVersion());
+        ClientChannelInfo clientChannelInfo = new ClientChannelInfo(ctx.channel(), requestHeader.getClientID(), request.getLanguage(), request.getVersion());
         {
             final String group = requestHeader.getProducerGroup();
             if (group != null) {

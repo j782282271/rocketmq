@@ -17,12 +17,11 @@
 package org.apache.rocketmq.broker.client;
 
 import io.netty.channel.Channel;
+import org.apache.rocketmq.broker.BrokerController;
+import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 
 import java.util.Collection;
 import java.util.List;
-
-import org.apache.rocketmq.broker.BrokerController;
-import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 
 public class DefaultConsumerIdsChangeListener implements ConsumerIdsChangeListener {
     private final BrokerController brokerController;
@@ -31,6 +30,11 @@ public class DefaultConsumerIdsChangeListener implements ConsumerIdsChangeListen
         this.brokerController = brokerController;
     }
 
+    /**
+     * 1处理channel变化情况：通知client，consumerId变化，需要重新负载均衡，本身consumer就会定时获取clientIds，进行负载均衡，多了此处，可以立即实时通知consumer进行负载均衡
+     * 2处理consumerGroup完全下线(没有任何channel)情况：通知ConsumerFilterManager清理该consumerGroup所有不必要的过滤条件
+     * 3处理新注册channel情况：通知ConsumerFilterManager，新增过滤条件
+     */
     @Override
     public void handle(ConsumerGroupEvent event, String group, Object... args) {
         if (event == null) {

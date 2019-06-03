@@ -27,7 +27,14 @@ import org.apache.rocketmq.filter.util.BloomFilterData;
 import java.util.Collections;
 
 /**
- * Filter data of consumer.
+ * ConsumerFilterData主要包括以下数据：
+ * 1property sql 表达式
+ * 2topic+consumerGroup这个String，通过bloomFilter.k个函数，计算出bloomFilter.m这些位中哪几位为1，放在BloomFilterData中
+ * 本类作用：
+ * 1producer发送消息时（CommitLogDispatcherCalcBitMap），遍历该topic下各个consumerGroup，假如遍历到当前ConsumerFilterData所属consumerGroup，那么做以下处理：
+ * 如果expression与msg property匹配上了，且this.bloomFilterData.bitPos[]=[1,6,43,55]，将该消息bitmap的的这几位1,6,43,55置为1，这样，遍历bitmap会被打上各个匹配上的consumerGroup的标识
+ * 2该ConsumerFilterData也可用于consumer消费消息，consumer根据当前topic、consumerGroup到ConsumerFilterManager类中找到本类，然后取出this.bloomFilterData（bitPos[]=[1,6,43,55]），
+ * 对比取出的消息的bitmap在1,6,43,55这几位是否都为1，如果有以为不为1，则认为该消息不匹配本consumer
  */
 public class ConsumerFilterData {
 
