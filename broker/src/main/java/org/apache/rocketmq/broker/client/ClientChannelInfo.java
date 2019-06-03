@@ -19,6 +19,7 @@ package org.apache.rocketmq.broker.client;
 import io.netty.channel.Channel;
 import org.apache.rocketmq.remoting.protocol.LanguageCode;
 
+
 public class ClientChannelInfo {
     private final Channel channel;
     private final String clientId;
@@ -95,6 +96,6 @@ public class ClientChannelInfo {
     @Override
     public String toString() {
         return "ClientChannelInfo [channel=" + channel + ", clientId=" + clientId + ", language=" + language
-            + ", version=" + version + ", lastUpdateTimestamp=" + lastUpdateTimestamp + "]";
+                + ", version=" + version + ", lastUpdateTimestamp=" + lastUpdateTimestamp + "]";
     }
 }

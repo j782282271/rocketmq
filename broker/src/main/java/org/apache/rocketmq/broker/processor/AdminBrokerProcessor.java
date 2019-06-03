@@ -422,27 +422,28 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         return response;
     }
 
-    private RemotingCommand unlockBatchMQ(ChannelHandlerContext ctx,
-                                          RemotingCommand request) throws RemotingCommandException {
+    /**
+     * 顺序消费会调用本方法,解除绑定关系，如果调用失败也没关系，绑定关系会自动过期
+     */
+    private RemotingCommand unlockBatchMQ(
+            ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
         UnlockBatchRequestBody requestBody = UnlockBatchRequestBody.decode(request.getBody(), UnlockBatchRequestBody.class);
 
-        this.brokerController.getRebalanceLockManager().unlockBatch(
-                requestBody.getConsumerGroup(),
-                requestBody.getMqSet(),
-                requestBody.getClientId());
+        this.brokerController.getRebalanceLockManager().unlockBatch(requestBody.getConsumerGroup(), requestBody.getMqSet(), requestBody.getClientId());
 
         response.setCode(ResponseCode.SUCCESS);
         response.setRemark(null);
         return response;
     }
 
+    /**
+     * 更新订阅信息
+     */
     private RemotingCommand updateAndCreateSubscriptionGroup(ChannelHandlerContext ctx, RemotingCommand request)
             throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
-
         log.info("updateAndCreateSubscriptionGroup called by {}", RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
-
         SubscriptionGroupConfig config = RemotingSerializable.decode(request.getBody(), SubscriptionGroupConfig.class);
         if (config != null) {
             this.brokerController.getSubscriptionGroupManager().updateSubscriptionGroupConfig(config);
@@ -453,6 +454,9 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         return response;
     }
 
+    /**
+     * 获取所有订阅信息
+     */
     private RemotingCommand getAllSubscriptionGroup(ChannelHandlerContext ctx,
                                                     RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
@@ -480,6 +484,9 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         return response;
     }
 
+    /**
+     * 删除订阅信息
+     */
     private RemotingCommand deleteSubscriptionGroup(ChannelHandlerContext ctx,
                                                     RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
@@ -495,8 +502,15 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         return response;
     }
 
-    private RemotingCommand getTopicStatsInfo(ChannelHandlerContext ctx,
-                                              RemotingCommand request) throws RemotingCommandException {
+    /**
+     * 获取topic统计信息包括：
+     * 该topic下每个mq的如下信息:
+     * 1min logic offset
+     * 2max logic offset
+     * 3最新消息更新时间
+     */
+    private RemotingCommand getTopicStatsInfo(
+            ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
         final GetTopicStatsInfoRequestHeader requestHeader =
                 (GetTopicStatsInfoRequestHeader) request.decodeCommandCustomHeader(GetTopicStatsInfoRequestHeader.class);
@@ -544,15 +558,19 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         return response;
     }
 
-    private RemotingCommand getConsumerConnectionList(ChannelHandlerContext ctx,
-                                                      RemotingCommand request) throws RemotingCommandException {
+
+    /**
+     * 获取ConsumerGroupInfo，将其转换为ConsumerConnection 返回
+     */
+    private RemotingCommand getConsumerConnectionList(
+            ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
         final GetConsumerConnectionListRequestHeader requestHeader =
                 (GetConsumerConnectionListRequestHeader) request.decodeCommandCustomHeader(GetConsumerConnectionListRequestHeader.class);
 
-        ConsumerGroupInfo consumerGroupInfo =
-                this.brokerController.getConsumerManager().getConsumerGroupInfo(requestHeader.getConsumerGroup());
+        ConsumerGroupInfo consumerGroupInfo = this.brokerController.getConsumerManager().getConsumerGroupInfo(requestHeader.getConsumerGroup());
         if (consumerGroupInfo != null) {
+            //ConsumerConnection相当于ConsumerGroupInfo的vo
             ConsumerConnection bodydata = new ConsumerConnection();
             bodydata.setConsumeFromWhere(consumerGroupInfo.getConsumeFromWhere());
             bodydata.setConsumeType(consumerGroupInfo.getConsumeType());
@@ -584,15 +602,17 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         return response;
     }
 
-    private RemotingCommand getProducerConnectionList(ChannelHandlerContext ctx,
-                                                      RemotingCommand request) throws RemotingCommandException {
+    /**
+     * 获取HashMap<Channel, ClientChannelInfo> channelInfoHashMap ，将其转换为ProducerConnection 返回
+     */
+    private RemotingCommand getProducerConnectionList(
+            ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
         final GetProducerConnectionListRequestHeader requestHeader =
                 (GetProducerConnectionListRequestHeader) request.decodeCommandCustomHeader(GetProducerConnectionListRequestHeader.class);
 
         ProducerConnection bodydata = new ProducerConnection();
-        HashMap<Channel, ClientChannelInfo> channelInfoHashMap =
-                this.brokerController.getProducerManager().getGroupChannelTable().get(requestHeader.getProducerGroup());
+        HashMap<Channel, ClientChannelInfo> channelInfoHashMap = this.brokerController.getProducerManager().getGroupChannelTable().get(requestHeader.getProducerGroup());
         if (channelInfoHashMap != null) {
             Iterator<Map.Entry<Channel, ClientChannelInfo>> it = channelInfoHashMap.entrySet().iterator();
             while (it.hasNext()) {
@@ -1203,11 +1223,8 @@ public class AdminBrokerProcessor implements NettyRequestProcessor {
         return runtimeInfo;
     }
 
-    private RemotingCommand callConsumer(
-            final int requestCode,
-            final RemotingCommand request,
-            final String consumerGroup,
-            final String clientId) throws RemotingCommandException {
+    private RemotingCommand callConsumer(final int requestCode, final RemotingCommand request,
+                                         final String consumerGroup, final String clientId) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
         ClientChannelInfo clientChannelInfo = this.brokerController.getConsumerManager().findChannel(consumerGroup, clientId);
 

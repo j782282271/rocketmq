@@ -17,9 +17,13 @@
 
 package org.apache.rocketmq.common.protocol.body;
 
-import java.util.HashSet;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 
+import java.util.HashSet;
+
+/**
+ * 相当于ClientChannelInfo的vo
+ */
 public class ProducerConnection extends RemotingSerializable {
     private HashSet<Connection> connectionSet = new HashSet<Connection>();
 
