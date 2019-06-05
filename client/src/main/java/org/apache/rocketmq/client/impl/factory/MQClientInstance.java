@@ -1155,7 +1155,12 @@ public class MQClientInstance {
     }
 
     /**
-     * pushConsumer.resetOffsetByTimeStamp
+     * ClientRemotingProcessor.resetOffset
+     * 1offsetTable是该topic所有的mq
+     * 2暂停consumer，停止拉取消息
+     * 3找到本cosnumer关心的mq对应的pq执行 pq.drop，停止处理已拉取到的消息
+     * 4更新mq的offset
+     * 5consumer.resume()内部会重新rebalance
      */
     public void resetOffset(String topic, String group, Map<MessageQueue, Long> offsetTable) {
         DefaultMQPushConsumerImpl consumer = null;

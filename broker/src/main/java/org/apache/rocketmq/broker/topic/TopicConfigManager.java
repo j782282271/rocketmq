@@ -57,7 +57,7 @@ public class TopicConfigManager extends ConfigManager {
     /**
      * 系统topic会被加入到此list
      */
-    private final Set<String> systemTopicList = new HashSet<String>();
+    private final Set<String> systemTopicList = new HashSet<>();
     private transient BrokerController brokerController;
 
     public TopicConfigManager() {

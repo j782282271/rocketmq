@@ -198,8 +198,9 @@ public class RebalancePushImpl extends RebalanceImpl {
             }
             case CONSUME_FROM_TIMESTAMP: {
                 /**
-                 *即使从CONSUME_FROM_TIMESTAMP开始消费，如果从store获得了lastoffset，也会从lastOffset开始消费，而不是从CONSUME_FROM_TIMESTAMP开始消费
-                 * */
+                 * 即使从CONSUME_FROM_TIMESTAMP开始消费，如果从store获得了lastoffset，也会从lastOffset开始消费，而不是从CONSUME_FROM_TIMESTAMP开始消费
+                 * 一般的一个新的订阅组第一次启动从指定时间点开始消费,后续再启动接着上次消费的进度开始消费,已有消费进度的订阅组，指定了时间消费也没用
+                 */
                 long lastOffset = offsetStore.readOffset(mq, ReadOffsetType.READ_FROM_STORE);
                 if (lastOffset >= 0) {
                     result = lastOffset;

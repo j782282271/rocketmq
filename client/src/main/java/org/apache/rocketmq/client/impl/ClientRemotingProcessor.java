@@ -126,6 +126,9 @@ public class ClientRemotingProcessor implements NettyRequestProcessor {
         return null;
     }
 
+    /**
+     * broker发来reset请求
+     */
     public RemotingCommand resetOffset(ChannelHandlerContext ctx,
                                        RemotingCommand request) throws RemotingCommandException {
         final ResetOffsetRequestHeader requestHeader =
@@ -141,6 +144,9 @@ public class ClientRemotingProcessor implements NettyRequestProcessor {
         return null;
     }
 
+    /**
+     * 查询消费进度
+     */
     @Deprecated
     public RemotingCommand getConsumeStatus(ChannelHandlerContext ctx,
                                             RemotingCommand request) throws RemotingCommandException {
@@ -156,8 +162,10 @@ public class ClientRemotingProcessor implements NettyRequestProcessor {
         return response;
     }
 
-    private RemotingCommand getConsumerRunningInfo(ChannelHandlerContext ctx,
-                                                   RemotingCommand request) throws RemotingCommandException {
+    /**
+     * 详细的client运行情况
+     */
+    private RemotingCommand getConsumerRunningInfo(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
         final GetConsumerRunningInfoRequestHeader requestHeader =
                 (GetConsumerRunningInfoRequestHeader) request.decodeCommandCustomHeader(GetConsumerRunningInfoRequestHeader.class);
@@ -169,14 +177,12 @@ public class ClientRemotingProcessor implements NettyRequestProcessor {
                 String jstack = UtilAll.jstack(map);
                 consumerRunningInfo.setJstack(jstack);
             }
-
             response.setCode(ResponseCode.SUCCESS);
             response.setBody(consumerRunningInfo.encode());
         } else {
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark(String.format("The Consumer Group <%s> not exist in this consumer", requestHeader.getConsumerGroup()));
         }
-
         return response;
     }
 

@@ -187,7 +187,6 @@ public class ConsumerManager {
 
     /***
      * 根据topic查询所有订阅该topic的consumerGroup
-     *
      */
     public HashSet<String> queryTopicConsumeByWho(final String topic) {
         HashSet<String> groups = new HashSet<>();
