@@ -543,8 +543,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
     /**
      * 消息到来时候调用本方法通知channel，有消息到来
      */
-    public void executeRequestWhenWakeup(final Channel channel,
-                                         final RemotingCommand request) throws RemotingCommandException {
+    public void executeRequestWhenWakeup(final Channel channel, final RemotingCommand request) throws RemotingCommandException {
         Runnable run = new Runnable() {
             @Override
             public void run() {
