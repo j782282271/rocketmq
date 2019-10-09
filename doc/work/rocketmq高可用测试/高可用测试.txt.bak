@@ -1,0 +1,65 @@
+0）升级rocketmq-client。下周二问情况，client都升级了就升级server。
+   rocketmq主备模式，主备切换测试
+   主挂了，producer发到另一个主上面。consumer从salve消费。slave无法自己提升为主。需要人主动提升主、或者启动主
+   主挂了，slave升级为主。再启动一个salve从当前的主，获取所有的消息吗？还是未消费的消息
+   
+启动是先启动nameservserv  再起动broker  
+cd /usr/local/rocketmq/bin
+nohup sh /usr/local/rocketmq/bin/mqnamesrv &
+nohup sh /usr/local/rocketmq/bin/mqbroker -c /usr/local/rocketmq/conf/2m-2s-sync/broker-a.properties >/dev/null 2>&1 &
+
+关闭namesrv服务：sh /usr/local/rocketmq/bin/mqshutdown namesrv
+关闭broker服务 ：sh /usr/local/rocketmq/bin/mqshutdown broker
+
+异步master-slave ha情况：
+测试1）启动master。停止slave。
+    发消息，消息都消费完毕，启动slave，salve会同步master所有消息，包括已读未读消费
+测试2）master启动，slave启动，挂掉master
+    master未消费的消息仍会得到消费
+    仍然可以从另一个master发送出去
+测试3）所有master都挂掉
+     org.apache.rocketmq.client.exception.MQClientException: No route info of this topic, haTestTopic
+测试4）所有master都起来
+     可收发消息
+测试5）主挂掉了，从消费，会增加从的offset。当主启动起来会重复消费
+       自己考虑幂等  
+测试6）正常退出，删除consumequeue后，consumeOffset.json中1:30,consumer从老的offset(30)消费，会产生一条OFFSET_MOVED_EVENT消息。再发消息，consumer会在consumeOffset.json新建队列消费进度1:0
+       如果之后出现不正常退出，再启动会从commitLog恢复consumequeue,这时consumeOffset.json仍为1:0会重复消费
+       总之意思就是：删除consumequeue，删除完了，异常退出后，再重启会根据commitLog将consumequeue恢复到删除之前的状态,而consumeOffset还是从0开始消费
+测试7）原来rocketmq升级，升级后store目录不变consumequeue目录也不变，结果配置变了consumequeue下的文件大小变了，导致老版本的该目录下的文件，在新的版本中无法加载到内存
+测试8）rocketmq预发环境 主加备后重复消费问题排查：
+     原rocketmq升级，升级后store/consumequeue目录没变，但配置变了，consumequeue下的文件大小变了，导致老版本的该目录下的文件，在新的版本中无法加载到内存
+     线上准备新搭建rocketmq双主备模型，不使用老的store目录
+测试9）rocketmq删除consumequeue文件夹以达到清空消费队列目的方法有问题：
+     删除consumequeue之后，如果broker出现异常退出，再重启broker会根据commitLog将consumequeue恢复到删除之前的状态，会导致重复消费
+测试10）rocketmq升级4.3.0，broker_default.log出现error：Error occured when looking for resource file META-INF/service/XXX.TransactionalMessageService、XXX.AbstractTransactionalMessageCheckListener
+     问题排查：因为没有以上配置文件，导致load不到这两个类的子类，打了error日志，但是后续程序创建了默认的实现类，所以，尽管打了error日志但是broker是正常启动。
+测试11）RocketMq升级4.3.0发送消息出现com.alibaba.rocketmq.client.exception.MQBrokerException: CODE: 2 DESC: [TIMEOUT_CLEAN_QUEUE]broker busy, start flow control for a while, period in queue: 201ms, size of queue: 1
+     broker的store.log日志中有此警告：NOTIFYME]putMessage in lock cost time(ms)=677。原因putmsg时锁住，只有一个线程可执行，而锁住时间过长，
+     导致其他发送消息线程在线程池等待时间超过waitTimeMillsInSendQueue，于是返回给发送者超时错误
+     sendMessageThreadPoolNums=4（原默认值=1）
+     waitTimeMillsInSendQueue=3000（原默认值=200）
+     useReentrantLockWhenPutMessage=true(默认false)
+测试12）发消息时[REJECTREQUEST]system busy, start flow control for a while
+     SendMessageProcessor reject消息，原因时加锁时间超过设置的osPageCacheBusyTimeOutMills（1s）认为操作系统缓存页很忙，拒绝sendMsg请求  
+     设置增大
+     测试11、12根本原因都是线上机器内存不够大，os系统内存不够导致nio占用，于是在加锁的地方可能出等待比较长的时间，而默认的超时间时间(osPageCacheBusyTimeOutMills/waitTimeMillsInSendQueue)
+     又不够大，常常出现超时，拒绝发送
+测试12）关于tag学习：
+     1）broker端、consumer端会根据tag过滤消息。tag信息会和commitLogOffset、消息size一起存储在consumequeue中，
+        consumer消费消息的时候会把topic tag信息传给broker，broker的PullMessageProcessor.processRequest方法，
+        会根据topic tag创建ExpressionMessageFilter，使用此过滤器过滤consumequeue消息，丢弃不满足的tag
+     2）consumer拉消息的时候，也会拉取到nextConsumeOffset，例如下面请情况
+        consumer（消费组：consumer_a） 订阅了topic:ATopic、tag:aTag
+        producer 发送了topic:ATopic、tag:bTag，该消息存储在consumequeue的0:2处，（config/consumeOffset.json目前为0:1）
+        这时候consumer消费消息，broker过滤掉消息，同时把nextConsumeOffset=2发给consumer，consumer确认消息位置把broker端config/consumeOffset.json中记录的最大消费位置从0:1更新为0:2
+        相当于跳过tag:bTag消息，即使下次再启动consumer_a组指定bTag消费，仍然获取不到消息，因为从2开始消费已经跳过那条消息了。
+     3）因为2）如果相同consumer group 下面的node1 node2同时分别消费topic:ATopic下的aTag和bTag，有可能他俩永远消费不到消息，因为消息有可能被对方过滤掉同时又被对方更新了offset
+13）多tag:
+     多tag目的，不同消费者关注的tag不同，不想让每个消费者都遍历同一topic的所有tag，浪费资源，可以分步骤发两个tag，这样无法保证事务，而且处理producer请求压力增大
+
+同步复制情况：
+   private int haSlaveFallbehindMax = 1024 * 1024 * 256;
+   slave落后超过512M则不再同步复制。 
+   Message.properties中"WAIT"属性可以指定本次是否需要等待同步到salve。同步模式，默认都等待同步
+   同步复制如果同步到slave超时，则返回给producer的result的status为SLAVE_TIMEOUT

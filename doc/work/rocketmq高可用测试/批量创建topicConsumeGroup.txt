@@ -1,0 +1,34 @@
+#!/bin/sh
+#注意rocketmq命令行认为存储在/usr/local/rocketmq/bin该目录下
+#$1=老rocketmq的topics.json文件位置路径
+#$2=老rocketmq的subscriptionGroup.json文件位置路径
+#$3=新rocketmq集群名
+#$4=新rocketmq的nameserAddr
+#使用例子：sh createTpicBatch.sh  /data/rocketmq/store/config/topics.json /data/rocketmq/store/config/subscriptionGroup.json dev-rocketmq 10.10.4.101:9876;10.10.4.102:9876;10.10.4.103:9876;10.10.4.104:9876
+
+error_exit ()
+{
+    echo "ERROR: $1 !!"
+    exit 1
+}
+
+[ ! -e "$1" ] && error_exit "请配置老rocketmq的topics.json文件位置路径!"
+[ ! -e "$2" ] && error_exit "请配置老rocketmq的subscriptionGroup.json文件位置路径!" 
+[ ! -n "$3" ] && error_exit "请配置新rocketmq集群名" 
+[ ! -n "$4" ] && error_exit "请配置新rocketmq的nameserAddr" 
+ 
+
+consumegroup=`cat subscriptionGroup.json | fgrep '":{' |sed -n '3,$p' | cut -d '"' -f2 | sort`
+topics=`cat topics.json | fgrep '":{'|fgrep -v '%DLQ%'|fgrep -v '%RETRY%' |sed -n '3,$p' | cut -d '"' -f2 |sort`
+
+for cg in $consumegroup
+do
+   sh /usr/local/rocketmq/bin/mqadmin updateSubGroup -c$3  -n$4 -g $cg
+   echo "created consume group $cg"
+done
+
+for tp in $topics
+do
+  sh /usr/local/rocketmq/bin/mqadmin updateTopic -c$3  -n$4 -t $tp  -r 16 -w 16
+  echo "created topic $tp"
+done
