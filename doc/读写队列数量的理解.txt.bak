@@ -12,7 +12,7 @@
 3）事务消息的存储结构   
 4）索引文件的存储结构
 5）定时消息存储结构
-6）重试机制producer+consumer
+6）重试机制
 https://blog.csdn.net/weixin_34452850/article/details/82746852
 
 其它知识点：
