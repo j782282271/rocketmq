@@ -23,7 +23,7 @@ nohup sh /usr/local/rocketmq/bin/mqbroker -c /usr/local/rocketmq/conf/2m-2s-sync
      可收发消息
 测试5）主挂掉了，从消费，会增加从的offset。当主启动起来会重复消费
        自己考虑幂等  
-测试6）正常退出，删除consumequeue后，consumeOffset.json中1:30,consumer从老的offset(30)消费，会产生一条OFFSET_MOVED_EVENT消息。再发消息，consumer会在consumeOffset.json新建队列消费进度1:0
+测试6）正常退出，删除consumequeue后，consumeOffset.json中1:30,consumer从老的offset(30)消费，会产生一条OFFSET_MOVED_EVENT消息。再发消息，CommitLog会在consumeOffset.json新建队列消费进度1:0
        如果之后出现不正常退出，再启动会从commitLog恢复consumequeue,这时consumeOffset.json仍为1:0会重复消费
        总之意思就是：删除consumequeue，删除完了，异常退出后，再重启会根据commitLog将consumequeue恢复到删除之前的状态,而consumeOffset还是从0开始消费
 测试7）原来rocketmq升级，升级后store目录不变consumequeue目录也不变，结果配置变了consumequeue下的文件大小变了，导致老版本的该目录下的文件，在新的版本中无法加载到内存

@@ -28,7 +28,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 管理MQClientInstance，MQClientInstance用于连接broker，同一jvm进程不管多少个producer可以使用同一个MQClientInstance
- * 同一jvm进程多个producer可以设置不同的clientId，这样就可以使用不同的MQClientInstance
+ * 同一jvm进程多个producer可以设置不同的clientId，这样就可以使用不同的MQClientInstance,consumer同理
+ * 默认用ip创建client，同一个jvm用同一个ip生成clientId，所以默认同一个jvm的多个consumer对象clientId一样。
+ * 如果非要指定自己的client，那么实现起来就复杂了，必须要用zk等方式获取自己的id，因为同一个服务的代码相同，id也不好指定。
+ * 或者可以自己根据ip计算，这样不通的服务client就可以不同了。
  */
 public class MQClientManager {
     private final static InternalLogger log = ClientLogger.getLog();
