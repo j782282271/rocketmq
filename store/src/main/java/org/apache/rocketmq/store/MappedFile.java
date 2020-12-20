@@ -162,7 +162,12 @@ public class MappedFile extends ReferenceResource {
         try {
             this.fileChannel = new RandomAccessFile(this.file, "rw").getChannel();
             this.mappedByteBuffer = this.fileChannel.map(MapMode.READ_WRITE, 0, fileSize);
+            //由于仅分配内存并进行mlock系统调用后并不会为程序完全锁定这些内存，因为其中的分页可能是写时复制的。
+            //因此，就有必要对每个内存页面中写入一个假的值。其中，
+            //RocketMQ是在创建并分配MappedFile的过程中，预先写入一些随机值至Mmap映射出的内存空间里。
+            //在这里对文件随机读写值，进行预热
             TOTAL_MAPPED_VIRTUAL_MEMORY.addAndGet(fileSize);
+            //增加已mapped的文件数量
             TOTAL_MAPPED_FILES.incrementAndGet();
             ok = true;
         } catch (FileNotFoundException e) {
@@ -553,11 +558,15 @@ public class MappedFile extends ReferenceResource {
     }
 
     //https://www.jianshu.com/p/64293741538d
+    //https://www.imooc.com/article/252270
     public void mlock() {
         final long beginTime = System.currentTimeMillis();
         final long address = ((DirectBuffer) (this.mappedByteBuffer)).address();
         Pointer pointer = new Pointer(address);
         {
+            //mlock系统调用：其可以将进程使用的部分或者全部的地址空间锁定在物理内存中，防止其被交换到swap空间。
+            //对于RocketMQ这种的高吞吐量的分布式消息队列来说，追求的是消息读写低延迟，那么肯定希望尽可能地多使用物理内存，
+            //提高数据读写访问的操作效率。
             int ret = LibC.INSTANCE.mlock(pointer, new NativeLong(this.fileSize));
             log.info("mlock {} {} {} ret = {} time consuming = {}", address, this.fileName, this.fileSize, ret, System.currentTimeMillis() - beginTime);
         }
@@ -565,6 +574,7 @@ public class MappedFile extends ReferenceResource {
         {
             //madvise：https://blog.csdn.net/wenjieky/article/details/8865272
             //https://blog.csdn.net/chdhust/article/details/8846718
+            //madvise系统调用，目的是使OS做一次内存映射后对应的文件数据尽可能多的预加载至内存中，从而达到内存预热的效果。
             int ret = LibC.INSTANCE.madvise(pointer, new NativeLong(this.fileSize), LibC.MADV_WILLNEED);
             log.info("madvise {} {} {} ret = {} time consuming = {}", address, this.fileName, this.fileSize, ret, System.currentTimeMillis() - beginTime);
         }
